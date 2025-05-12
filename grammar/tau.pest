@@ -1,0 +1,98 @@
+root    = { imports ~ declaration* }
+typeDef = { name ~ ":" ~ typeName }
+body    = { "{" ~ statement* ~ "}" }
+
+imports = { import* }
+import  = { "import" ~ path }
+
+declaration  = { functionDecl | structDecl }
+functionDecl = { "fn" ~ (name ~ "::")? ~ name ~ "(" ~ (typeDef ~ ("," ~ typeDef))? ~ ")" ~ (":" ~ typeName) ~ body }
+structDecl   = { "struct" ~ name ~ "{" ~ (typeDef ~ ("," ~ typeDef)*)? ~ "}" }
+
+controlFlow = { ifFlow | whileFlow | forFlow }
+ifFlow      = { "if" ~ boolExpr ~ body ~ (elseIfFlow)* ~ (elseFlow)? }
+elseFlow    = { "else" ~ body }
+elseIfFlow  = { "else" ~ "if" ~ boolExpr ~ body }
+whileFlow   = { "while" ~ boolExpr ~ body }
+forFlow     = { "for" ~ name ~ "in" ~ iterExpr ~ body }
+
+statement             = {
+    declarationStatement
+  | modificationStatement
+  | callStatement
+  | returnStatement
+  | breakStatement
+  | controlFlow
+}
+declarationStatement  = { "let" ~ typeDef ~ "=" ~ valueExpr }
+modificationStatement = { path ~ (((assign | addAssign | subAssign | mulAssign | divAssign) ~ valueExpr) | unaryInc | unaryDec) }
+callStatement         = { path ~ "(" ~ (valueExpr ~ (", " ~ valueExpr)*)? ~ ")" }
+returnStatement       = { "return" ~ valueExpr }
+breakStatement        = { "break" }
+
+valueExpr  = { variable | numberExpr | boolExpr | char | string }
+numberExpr = {
+    "(" ~ numberExpr ~ ")"
+  | number ~ (mul | div) ~ number
+  | number ~ (add | sub) ~ number
+  | number
+  | variable
+}
+boolExpr   = {
+    "(" ~ boolExpr ~ ")"
+  | numberExpr ~ (gre | low | geq | leq | eq | neq) ~ numberExpr
+  | "!" ~ bool
+  | bool
+  | variable
+}
+iterExpr   = { name | callStatement }
+
+path     = { name ~ ("." ~ name)* }
+variable = { "self" | path }
+name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT)* }
+number   = { ("+" | "-")? ~ ASCII_NONZERO_DIGIT ~ (ASCII_DIGIT*) }
+bool     = @{ "true" | "false" }
+char     = @{ "'" ~ ANY ~ "'" }
+string   = @{ "\"" ~ (ASCII)* ~ "\"" }
+
+typeName = {
+    native
+  | name
+}
+native   = @{
+    "bool"
+  | "char"
+  | "string"
+  | "i8"
+  | "i16"
+  | "i32"
+  | "i64"
+  | "u8"
+  | "u16"
+  | "u32"
+  | "u64"
+  | "f32"
+  | "f64"
+}
+
+assign    = { "=" }
+addAssign = { "+=" }
+subAssign = { "-=" }
+mulAssign = { "*=" }
+divAssign = { "/=" }
+unaryInc  = { "++" }
+unaryDec  = { "--" }
+
+add = { "+" }
+sub = { "-" }
+mul = { "*" }
+div = { "/" }
+gre = { ">" }
+low = { "<" }
+geq = { ">=" }
+leq = { "<=" }
+eq  = { "==" }
+neq = { "!=" }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
