@@ -56,7 +56,9 @@ iterExpr   = { name | callStatement }
 
 variable = @{ name ~ ("." ~ name)* }
 name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT)* }
-number   = @{ ("+" | "-")? ~ ASCII_NONZERO_DIGIT ~ (ASCII_DIGIT*) }
+number   =  { float | integer }
+float    = @{ ("+" | "-")? ~ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* | "0") ~ "." ~ ASCII_DIGIT+ }
+integer  = @{ ("+" | "-")? ~ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* | "0") }
 bool     = @{ "true" | "false" }
 char     = @{ "'" ~ ANY ~ "'" }
 string   = @{ "\"" ~ (ASCII)* ~ "\"" }
