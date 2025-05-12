@@ -1,13 +1,15 @@
-root    = { imports ~ declaration* }
+root    = { SOI ~ imports ~ declarations ~ EOI }
 typeDef = { name ~ ":" ~ typeName }
 body    = { "{" ~ statement* ~ "}" }
 
 imports = { import* }
-import  = { "import" ~ path }
+import  = { "import" ~ variable }
 
-declaration  = { functionDecl | structDecl }
-functionDecl = { "fn" ~ (name ~ "::")? ~ name ~ "(" ~ (typeDef ~ ("," ~ typeDef))? ~ ")" ~ (":" ~ typeName) ~ body }
+declarations = { declaration* }
+declaration  = { functionDecl | structDecl | variableDecl }
+functionDecl = { "fn" ~ name ~ "(" ~ (typeDef ~ ("," ~ typeDef)*)? ~ ")" ~ (":" ~ typeName) ~ body }
 structDecl   = { "struct" ~ name ~ "{" ~ (typeDef ~ ("," ~ typeDef)*)? ~ "}" }
+variableDecl = { variableStatement | constantStatement }
 
 controlFlow = { ifFlow | whileFlow | forFlow }
 ifFlow      = { "if" ~ boolExpr ~ body ~ (elseIfFlow)* ~ (elseFlow)? }
@@ -17,20 +19,25 @@ whileFlow   = { "while" ~ boolExpr ~ body }
 forFlow     = { "for" ~ name ~ "in" ~ iterExpr ~ body }
 
 statement             = {
-    declarationStatement
+    variableStatement
+  | constantStatement
   | modificationStatement
   | callStatement
   | returnStatement
   | breakStatement
   | controlFlow
 }
-declarationStatement  = { "let" ~ typeDef ~ "=" ~ valueExpr }
-modificationStatement = { path ~ (((assign | addAssign | subAssign | mulAssign | divAssign) ~ valueExpr) | unaryInc | unaryDec) }
-callStatement         = { path ~ "(" ~ (valueExpr ~ (", " ~ valueExpr)*)? ~ ")" }
+variableStatement     = { "let" ~ typeDef ~ "=" ~ valueExpr }
+constantStatement     = { "const" ~ typeDef ~ "=" ~ valueExpr }
+modificationStatement = { variable ~ ((assignOp ~ valueExpr) | unaryInc | unaryDec) }
+callStatement         = { variable ~ "(" ~ (valueExpr ~ (", " ~ valueExpr)*)? ~ ")" }
 returnStatement       = { "return" ~ valueExpr }
 breakStatement        = { "break" }
 
-valueExpr  = { variable | numberExpr | boolExpr | char | string }
+valueExpr  = { variable | arrayExpr | tableExpr | numberExpr | boolExpr | char | string }
+arrayExpr  = { "[" ~ (valueExpr ~ ("," ~ valueExpr)*)? ~ "]" }
+tableExpr  = { "{" ~ (tablePair ~ ("," ~ tablePair)*)? ~ "}" }
+tablePair  = { name ~ "=" ~ valueExpr }
 numberExpr = {
     "(" ~ numberExpr ~ ")"
   | number ~ (mul | div) ~ number
@@ -47,15 +54,14 @@ boolExpr   = {
 }
 iterExpr   = { name | callStatement }
 
-path     = { name ~ ("." ~ name)* }
-variable = { "self" | path }
+variable = @{ name ~ ("." ~ name)* }
 name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT)* }
-number   = { ("+" | "-")? ~ ASCII_NONZERO_DIGIT ~ (ASCII_DIGIT*) }
+number   = @{ ("+" | "-")? ~ ASCII_NONZERO_DIGIT ~ (ASCII_DIGIT*) }
 bool     = @{ "true" | "false" }
 char     = @{ "'" ~ ANY ~ "'" }
 string   = @{ "\"" ~ (ASCII)* ~ "\"" }
 
-typeName = {
+typeName = @{
     native
   | name
 }
@@ -75,24 +81,31 @@ native   = @{
   | "f64"
 }
 
-assign    = { "=" }
-addAssign = { "+=" }
-subAssign = { "-=" }
-mulAssign = { "*=" }
-divAssign = { "/=" }
-unaryInc  = { "++" }
-unaryDec  = { "--" }
+assignOp  =  {
+    assign
+  | addAssign
+  | subAssign
+  | mulAssign
+  | divAssign
+}
+assign    = @{ "=" }
+addAssign = @{ "+=" }
+subAssign = @{ "-=" }
+mulAssign = @{ "*=" }
+divAssign = @{ "/=" }
+unaryInc  = @{ "++" }
+unaryDec  = @{ "--" }
 
-add = { "+" }
-sub = { "-" }
-mul = { "*" }
-div = { "/" }
-gre = { ">" }
-low = { "<" }
-geq = { ">=" }
-leq = { "<=" }
-eq  = { "==" }
-neq = { "!=" }
+add = @{ "+" }
+sub = @{ "-" }
+mul = @{ "*" }
+div = @{ "/" }
+gre = @{ ">" }
+low = @{ "<" }
+geq = @{ ">=" }
+leq = @{ "<=" }
+eq  = @{ "==" }
+neq = @{ "!=" }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
