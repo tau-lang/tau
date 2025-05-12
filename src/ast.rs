@@ -7,33 +7,43 @@ impl Ast {
 }
 
 #[derive(Debug)]
-pub enum Ast {
+pub enum PrimitiveTypes {
+    String,
+    Number,
+}
+
+#[derive(Debug)]
+pub enum Primitive {
+    String(String),
     Number(i64),
+}
+
+#[derive(Debug)]
+pub enum BinaryOp {
+    Equal,
+    NotEqual,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
+#[derive(Debug)]
+pub enum UnaryOp {
+    Not,
+}
+
+#[derive(Debug)]
+pub enum Ast {
+    Primitive,
     Id(Id),
-    Not {
+    Composit(Type),
+    UnaryOp {
+        op: UnaryOp,
         term: Rc<Ast>,
     },
-    Equal {
-        lhs: Rc<Ast>,
-        rhs: Rc<Ast>,
-    },
-    NotEqual {
-        lhs: Rc<Ast>,
-        rhs: Rc<Ast>,
-    },
-    Add {
-        lhs: Rc<Ast>,
-        rhs: Rc<Ast>,
-    },
-    Subtract {
-        lhs: Rc<Ast>,
-        rhs: Rc<Ast>,
-    },
-    Multiply {
-        lhs: Rc<Ast>,
-        rhs: Rc<Ast>,
-    },
-    Defive {
+    BinaryOp {
+        op: BinaryOp,
         lhs: Rc<Ast>,
         rhs: Rc<Ast>,
     },
@@ -54,12 +64,13 @@ pub enum Ast {
     },
     Function {
         name: Id,
-        parameters: Vec<String>,
+        parameters: Vec<(String, Type)>,
         body: Rc<Ast>,
     },
     Var {
         name: String,
         value: Rc<Ast>,
+        r#type: Type,
     },
     Assignment {
         name: String,
@@ -69,6 +80,11 @@ pub enum Ast {
         conditional: Rc<Ast>,
         body: Rc<Ast>,
     },
+}
+#[derive(Debug)]
+pub enum Type {
+    Composit { name: String, fields: Vec<Type> },
+    Primitive((String, PrimitiveTypes)),
 }
 
 #[derive(Debug)]
