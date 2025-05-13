@@ -9,9 +9,12 @@ impl Ast {
 #[derive(Debug)]
 pub enum PrimitiveTypes {
     String,
-    Number,
+    I64,
+    I32,
+    F64,
+    F32,
+    Custom(String),
 }
-
 #[derive(Debug)]
 pub enum Primitive {
     String(String),
@@ -37,7 +40,13 @@ pub enum UnaryOp {
 pub enum Ast {
     Primitive,
     Id(Id),
-    Composit(Type),
+    Composit {
+        name: String,
+        fields: Vec<Type>,
+    },
+    Enum {
+        variants: Vec<Type>,
+    },
     UnaryOp {
         op: UnaryOp,
         term: Rc<Ast>,
@@ -82,9 +91,9 @@ pub enum Ast {
     },
 }
 #[derive(Debug)]
-pub enum Type {
-    Composit { name: String, fields: Vec<Type> },
-    Primitive((String, PrimitiveTypes)),
+pub struct Type {
+    pub name: String,
+    pub r#type: PrimitiveTypes,
 }
 
 #[derive(Debug)]

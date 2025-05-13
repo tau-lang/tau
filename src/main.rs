@@ -1,6 +1,6 @@
 pub mod ast;
 
-use ast::{Ast, Id};
+use ast::{Ast, Id, PrimitiveTypes, Type};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -14,6 +14,24 @@ fn main() {
         .unwrap_or_else(|e| panic!("{}", e));
     use pest::iterators::Pair;
     dbg!(parse_tau(pairs.next().unwrap()));
+    fn typedef(pair: Pair<Rule>) -> Type {
+        match pair.as_rule() {
+            Rule::typeDef => {
+                let mut inner = pair.into_inner();
+                let n = inner.next().unwrap().as_span().as_str().to_string();
+                let t = match inner.last().unwrap().as_span().as_str() {
+                    "f32" => PrimitiveTypes::F32,
+                    "f64" => PrimitiveTypes::F64,
+                    "i64" => PrimitiveTypes::I64,
+                    "i32" => PrimitiveTypes::I32,
+                    "string" => PrimitiveTypes::String,
+                    c @ _ => PrimitiveTypes::Custom(c.to_string()),
+                };
+                Type { name: n, r#type: t }
+            }
+            _ => panic!("expected a typdef"),
+        }
+    }
     fn parse_tau(pair: Pair<Rule>) -> Ast {
         match pair.as_rule() {
             Rule::root => Ast::Block {
@@ -23,10 +41,22 @@ fn main() {
                     .collect(),
             },
             Rule::imports => Ast::Block { terms: vec![] },
-            Rule::structDecl => Ast::Composit(ast::Type::Primitive((
-                "vec2".to_string(),
-                ast::PrimitiveTypes::Number,
-            ))),
+            Rule::typeDef => panic!("should not encounter raw typeDef in AST parsing"),
+            Rule::structDecl => {
+                let mut i = pair.clone().into_inner();
+                i.next();
+                Ast::Composit {
+                    name: pair
+                        .clone()
+                        .into_inner()
+                        .next()
+                        .unwrap()
+                        .as_span()
+                        .as_str()
+                        .to_string(),
+                    fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
+                }
+            }
             Rule::declaration | Rule::declarations => parse_tau(pair.into_inner().next().unwrap()),
             Rule::functionDecl => {
                 // dbg!(&pair);
