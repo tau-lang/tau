@@ -34,25 +34,35 @@ callStatement         = { variable ~ "(" ~ (valueExpr ~ (", " ~ valueExpr)*)? ~ 
 returnStatement       = { "return" ~ valueExpr }
 breakStatement        = { "break" }
 
-valueExpr  = { variable | arrayExpr | tableExpr | numberExpr | boolExpr | char | string }
+valueExpr  = { numberExpr | boolExpr | callStatement | arrayExpr | tableExpr | variable | char | string }
 arrayExpr  = { "[" ~ (valueExpr ~ ("," ~ valueExpr)*)? ~ "]" }
 tableExpr  = { "{" ~ (tablePair ~ ("," ~ tablePair)*)? ~ "}" }
 tablePair  = { name ~ "=" ~ valueExpr }
 numberExpr = {
-    "(" ~ numberExpr ~ ")"
-  | number ~ (mul | div) ~ number
-  | number ~ (add | sub) ~ number
-  | number
-  | variable
+    numberValue ~ (mul | div) ~ numberExpr
+  | numberValue ~ (add | sub) ~ numberExpr
+  | numberValue
 }
-boolExpr   = {
+numberValue = {
+    "(" ~ numberExpr ~ ")"
+  | callStatement
+  | variable
+  | number
+}
+
+boolExpr  = {
     "(" ~ boolExpr ~ ")"
+  | "!" ~ boolExpr
   | numberExpr ~ (gre | low | geq | leq | eq | neq) ~ numberExpr
-  | "!" ~ bool
+  | boolValue ~ (and | or | xor) ~ boolExpr
+  | boolValue
+}
+boolValue = {
+    callStatement
   | bool
   | variable
 }
-iterExpr   = { name | callStatement }
+iterExpr  = { name | callStatement }
 
 variable = @{ name ~ ("." ~ name)* }
 name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT)* }
@@ -108,6 +118,10 @@ geq = @{ ">=" }
 leq = @{ "<=" }
 eq  = @{ "==" }
 neq = @{ "!=" }
+
+and = @{ "&&" }
+or  = @{ "||" }
+xor = @{ "|" }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
