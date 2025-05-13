@@ -40,8 +40,8 @@ tableExpr  = { "{" ~ (tablePair ~ ("," ~ tablePair)*)? ~ "}" }
 tablePair  = { name ~ "=" ~ valueExpr }
 numberExpr = {
     "(" ~ numberExpr ~ ")"
-  | number ~ (mul | div) ~ number
-  | number ~ (add | sub) ~ number
+  | (variable | number) ~ (mul | div) ~ (variable | number)
+  | (variable | number) ~ (add | sub) ~ (variable | number)
   | number
   | variable
 }
@@ -55,7 +55,7 @@ boolExpr   = {
 iterExpr   = { name | callStatement }
 
 variable = @{ name ~ ("." ~ name)* }
-name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT)* }
+name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT | "_")* }
 number   =  { float | integer }
 float    = @{ ("+" | "-")? ~ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* | "0") ~ "." ~ ASCII_DIGIT+ }
 integer  = @{ ("+" | "-")? ~ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* | "0") }
