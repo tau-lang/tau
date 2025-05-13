@@ -73,7 +73,8 @@ pub enum Ast {
     },
     Function {
         name: Id,
-        parameters: Vec<(String, Type)>,
+        return_type: PrimitiveTypes,
+        parameters: Vec<Type>,
         body: Rc<Ast>,
     },
     Var {

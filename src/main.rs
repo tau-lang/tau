@@ -10,26 +10,29 @@ use pest_derive::Parser;
 struct TauParser;
 
 fn main() {
-    let mut pairs = TauParser::parse(Rule::root, include_str!("../examples/vec2.tau"))
+    let pairs = TauParser::parse(Rule::root, include_str!("../examples/vec2.tau"))
         .unwrap_or_else(|e| panic!("{}", e));
     use pest::iterators::Pair;
-    dbg!(parse_tau(pairs.next().unwrap()));
+    dbg!(pairs.map(|pair| parse_tau(pair)).collect::<Vec<Ast>>());
+    fn type_name(str: &str) -> PrimitiveTypes {
+        match str {
+            "f32" => PrimitiveTypes::F32,
+            "f64" => PrimitiveTypes::F64,
+            "i64" => PrimitiveTypes::I64,
+            "i32" => PrimitiveTypes::I32,
+            "string" => PrimitiveTypes::String,
+            c @ _ => PrimitiveTypes::Custom(c.to_string()),
+        }
+    }
     fn typedef(pair: Pair<Rule>) -> Type {
         match pair.as_rule() {
             Rule::typeDef => {
                 let mut inner = pair.into_inner();
                 let n = inner.next().unwrap().as_span().as_str().to_string();
-                let t = match inner.last().unwrap().as_span().as_str() {
-                    "f32" => PrimitiveTypes::F32,
-                    "f64" => PrimitiveTypes::F64,
-                    "i64" => PrimitiveTypes::I64,
-                    "i32" => PrimitiveTypes::I32,
-                    "string" => PrimitiveTypes::String,
-                    c @ _ => PrimitiveTypes::Custom(c.to_string()),
-                };
+                let t = type_name(inner.last().unwrap().as_span().as_str());
                 Type { name: n, r#type: t }
             }
-            _ => panic!("expected a typdef"),
+            r @ _ => panic!("expected a typdef, found {:?}", r),
         }
     }
     fn parse_tau(pair: Pair<Rule>) -> Ast {
@@ -40,11 +43,10 @@ fn main() {
                     .map(|pair: Pair<Rule>| parse_tau(pair))
                     .collect(),
             },
-            Rule::imports => Ast::Block { terms: vec![] },
+            Rule::imports => Ast::Id(Id::new("this is where the imports will be")),
             Rule::typeDef => panic!("should not encounter raw typeDef in AST parsing"),
             Rule::structDecl => {
-                let mut i = pair.clone().into_inner();
-                i.next();
+                let i = pair.clone().into_inner();
                 Ast::Composit {
                     name: pair
                         .clone()
@@ -57,22 +59,30 @@ fn main() {
                     fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
                 }
             }
-            Rule::declaration | Rule::declarations => parse_tau(pair.into_inner().next().unwrap()),
+            Rule::declaration | Rule::declarations | Rule::body => Ast::Block {
+                terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
+            },
+            Rule::statement => {
+                todo!()
+            }
             Rule::functionDecl => {
-                // dbg!(&pair);
-                Ast::Id(Id::new(pair.as_str()))
-                // Ast::Function {
-                //     name: Id::new(&pair.as_str()),
-                //     parameters: todo!(),
-                //     body: todo!(),
-                // }
+                let mut inner = pair.into_inner();
+                let name = Id::new(inner.next().unwrap().as_span().as_str());
+                let len = inner.len();
+                let mut args = vec![];
+                for _ in 0..(len - 2) {
+                    args.push(typedef(inner.next().unwrap()));
+                }
+                let ret_type = type_name(inner.next().unwrap().as_span().as_str());
+                let body = parse_tau(inner.next().unwrap());
+                Ast::Function {
+                    name,
+                    parameters: args,
+                    body: Ast::Id(Id::new("ee")).r(),
+                    return_type: ret_type,
+                }
             }
             Rule::EOI => Ast::Block { terms: vec![] },
-            // Rule::functionDecl => Ast::Function {
-            //     name: (),
-            //     parameters: (),
-            //     body: (),
-            // },
             e @ _ => todo!("{:?}", e),
         }
     }
