@@ -41,6 +41,7 @@ pub enum UnaryOp {
 pub enum Ast {
     Primitive(Primitive),
     Id(Id),
+    Imports(Vec<String>),
     Composit {
         name: String,
         fields: Vec<Type>,

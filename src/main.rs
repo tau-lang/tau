@@ -43,7 +43,22 @@ fn main() {
                     .map(|pair: Pair<Rule>| parse_tau(pair))
                     .collect(),
             },
-            Rule::imports => Ast::Id(Id::new("this is where the imports will be")),
+            Rule::modificationStatement => {
+                dbg!(pair.into_inner());
+                todo!()
+            }
+            Rule::imports => Ast::Imports(
+                pair.into_inner()
+                    .map(|pair| {
+                        pair.into_inner()
+                            .next()
+                            .unwrap()
+                            .as_span()
+                            .as_str()
+                            .to_string()
+                    })
+                    .collect(),
+            ),
             Rule::typeDef => panic!("should not encounter raw typeDef in AST parsing"),
             Rule::structDecl => {
                 let mut i = pair.clone().into_inner();

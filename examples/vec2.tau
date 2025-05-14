@@ -1,4 +1,5 @@
 import math
+import mymod
 
 struct vec2 {
    x: f64,
