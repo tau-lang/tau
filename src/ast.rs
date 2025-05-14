@@ -14,12 +14,14 @@ pub enum PrimitiveTypes {
     F64,
     F32,
     Custom(String),
+    Unit,
 }
 #[derive(Debug, PartialEq)]
 pub enum Primitive {
     String(String),
     Int(i64),
     Float(f64),
+    Unit,
 }
 
 #[derive(Debug, PartialEq)]
@@ -77,7 +79,7 @@ pub enum Ast {
         name: Id,
         return_type: PrimitiveTypes,
         parameters: Vec<Type>,
-        body: Rc<Ast>,
+        body: Vec<Ast>,
     },
     Var {
         name: String,

@@ -77,11 +77,16 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                 args.push(typedef(inner.next().unwrap()));
             }
             let ret_type = type_name(inner.next().unwrap().as_span().as_str());
-            let body = parse_tau(inner.next().unwrap());
             Ast::Function {
                 name,
                 parameters: args,
-                body: body.r(),
+                body: inner
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .map(|pair| parse_tau(pair))
+                    .collect(),
+
                 return_type: ret_type,
             }
         }
@@ -130,6 +135,40 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
 mod test {
     use super::*;
     #[test]
+    fn composit_type() {
+        let src = "
+struct vec2 {
+   x: f64,
+   y: i32
+}
+            ";
+        let mut tokens = TauParser::parse(Rule::root, src).unwrap_or_else(|e| panic!("{}", e));
+        assert_eq!(
+            parse_tau(tokens.next().unwrap()),
+            Ast::Block {
+                terms: vec![
+                    Ast::Imports(vec![]),
+                    Ast::Block {
+                        terms: vec![Ast::Composit {
+                            name: "vec2".to_string(),
+                            fields: vec![
+                                Type {
+                                    name: "x".to_string(),
+                                    r#type: PrimitiveTypes::F64
+                                },
+                                Type {
+                                    name: "y".to_string(),
+                                    r#type: PrimitiveTypes::I32
+                                }
+                            ]
+                        }],
+                    },
+                    Ast::Block { terms: vec![] }
+                ]
+            }
+        )
+    }
+    #[test]
     fn imports() {
         let src = "
 import math
@@ -142,6 +181,38 @@ import mymod
                 terms: vec![
                     Ast::Imports(vec!["math".to_string(), "mymod".to_string()]),
                     Ast::Block { terms: vec![] },
+                    Ast::Block { terms: vec![] }
+                ]
+            }
+        )
+    }
+    #[test]
+    fn function() {
+        let src = "
+
+fn example(x: i32): i32 {
+        // let aNumber: i32 = 21
+        // return aNumber * x
+
+}
+            ";
+        let mut tokens = TauParser::parse(Rule::root, src).unwrap_or_else(|e| panic!("{}", e));
+        assert_eq!(
+            parse_tau(tokens.next().unwrap()),
+            Ast::Block {
+                terms: vec![
+                    Ast::Imports(vec![]),
+                    Ast::Block {
+                        terms: vec![Ast::Function {
+                            name: Id::new("example"),
+                            return_type: PrimitiveTypes::Unit,
+                            parameters: vec![Type {
+                                name: "x".to_string(),
+                                r#type: PrimitiveTypes::I32
+                            }],
+                            body: vec![]
+                        }]
+                    },
                     Ast::Block { terms: vec![] }
                 ]
             }
