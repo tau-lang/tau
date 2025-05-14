@@ -15,6 +15,7 @@ fn type_name(str: &str) -> PrimitiveTypes {
         "i64" => PrimitiveTypes::I64,
         "i32" => PrimitiveTypes::I32,
         "string" => PrimitiveTypes::String,
+        "void" => PrimitiveTypes::Unit,
         c @ _ => PrimitiveTypes::Custom(c.to_string()),
     }
 }
@@ -190,10 +191,7 @@ import mymod
     fn function() {
         let src = "
 
-fn example(x: i32): i32 {
-        // let aNumber: i32 = 21
-        // return aNumber * x
-
+fn example(x: i32): void {
 }
             ";
         let mut tokens = TauParser::parse(Rule::root, src).unwrap_or_else(|e| panic!("{}", e));
