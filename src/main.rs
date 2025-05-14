@@ -67,11 +67,13 @@ fn main() {
                     fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
                 }
             }
-            Rule::declarations | Rule::body | Rule::statement | Rule::valueExpr => Ast::Block {
+            Rule::declarations | Rule::body | Rule::statement => Ast::Block {
                 terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
             },
             // use if only one is expected to avoid too deep nesting with blocks
-            Rule::numberExpr | Rule::declaration => parse_tau(pair.into_inner().next().unwrap()),
+            Rule::numberExpr | Rule::declaration | Rule::valueExpr => {
+                parse_tau(pair.into_inner().next().unwrap())
+            }
             Rule::functionDecl => {
                 let mut inner = pair.into_inner();
                 let name = Id::new(inner.next().unwrap().as_span().as_str());
