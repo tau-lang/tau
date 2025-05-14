@@ -1,9 +1,9 @@
-// import math
+import math
 
-// struct vec2 {
-//    x: f64,
-//    y: f64
-// }
+struct vec2 {
+   x: f64,
+   y: f64
+}
 
 // const pi: f64 = 3
 // fn create(x: f64, y: f64): vec2 {

@@ -32,7 +32,7 @@ fn main() {
                 let t = type_name(inner.last().unwrap().as_span().as_str());
                 Type { name: n, r#type: t }
             }
-            r @ _ => panic!("expected a typdef, found {:?}", r),
+            r @ _ => panic!("expected a typdef, found {:?} in {:?}", r, pair),
         }
     }
     fn parse_tau(pair: Pair<Rule>) -> Ast {
@@ -46,29 +46,17 @@ fn main() {
             Rule::imports => Ast::Id(Id::new("this is where the imports will be")),
             Rule::typeDef => panic!("should not encounter raw typeDef in AST parsing"),
             Rule::structDecl => {
-                let i = pair.clone().into_inner();
+                let mut i = pair.clone().into_inner();
                 Ast::Composit {
-                    name: pair
-                        .clone()
-                        .into_inner()
-                        .next()
-                        .unwrap()
-                        .as_span()
-                        .as_str()
-                        .to_string(),
+                    name: i.next().unwrap().as_span().as_str().to_string(),
                     fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
                 }
             }
-            Rule::declaration
-            | Rule::declarations
-            | Rule::body
-            | Rule::statement
-            | Rule::valueExpr => Ast::Block {
+            Rule::declarations | Rule::body | Rule::statement | Rule::valueExpr => Ast::Block {
                 terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
             },
-
             // use if only one is expected to avoid too deep nesting with blocks
-            Rule::numberExpr => parse_tau(pair.into_inner().next().unwrap()),
+            Rule::numberExpr | Rule::declaration => parse_tau(pair.into_inner().next().unwrap()),
             Rule::functionDecl => {
                 let mut inner = pair.into_inner();
                 let name = Id::new(inner.next().unwrap().as_span().as_str());
@@ -94,15 +82,15 @@ fn main() {
                     let n = decl.next().unwrap().as_span().as_str().to_string();
                     (n, type_name(decl.next().unwrap().as_span().as_str()))
                 };
-                dbg!(Ast::Var {
+                Ast::Var {
                     name: n,
                     value: parse_tau(inner.next().unwrap()).r(),
                     r#type: t,
-                })
+                }
             }
 
             Rule::numberValue => {
-                let inner = dbg!(pair.into_inner().last().unwrap());
+                let inner = pair.into_inner().last().unwrap();
                 if let Some(typ) = inner.clone().into_inner().next() {
                     match typ.as_rule() {
                         Rule::integer => Ast::Primitive(ast::Primitive::Int(
