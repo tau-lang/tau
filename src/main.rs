@@ -59,12 +59,16 @@ fn main() {
                     fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
                 }
             }
-            Rule::declaration | Rule::declarations | Rule::body => Ast::Block {
+            Rule::declaration
+            | Rule::declarations
+            | Rule::body
+            | Rule::statement
+            | Rule::valueExpr => Ast::Block {
                 terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
             },
-            Rule::statement => {
-                todo!()
-            }
+
+            // use if only one is expected to avoid too deep nesting with blocks
+            Rule::numberExpr => parse_tau(pair.into_inner().next().unwrap()),
             Rule::functionDecl => {
                 let mut inner = pair.into_inner();
                 let name = Id::new(inner.next().unwrap().as_span().as_str());
@@ -83,6 +87,38 @@ fn main() {
                 }
             }
             Rule::EOI => Ast::Block { terms: vec![] },
+            Rule::variableStatement => {
+                let mut inner = pair.into_inner();
+                let (n, t) = {
+                    let mut decl = inner.next().unwrap().into_inner();
+                    let n = decl.next().unwrap().as_span().as_str().to_string();
+                    (n, type_name(decl.next().unwrap().as_span().as_str()))
+                };
+                dbg!(Ast::Var {
+                    name: n,
+                    value: parse_tau(inner.next().unwrap()).r(),
+                    r#type: t,
+                })
+            }
+
+            Rule::numberValue => {
+                let inner = dbg!(pair.into_inner().last().unwrap());
+                match inner.clone().into_inner().next().unwrap().as_rule() {
+                    Rule::integer => Ast::Primitive(ast::Primitive::Int(
+                        inner.as_span().as_str().parse().unwrap(),
+                    )),
+                    Rule::float => Ast::Primitive(ast::Primitive::Float(
+                        inner.as_span().as_str().parse().unwrap(),
+                    )),
+                    r @ _ => panic!("expected int or float, got {:?}", r),
+                }
+            }
+            // Rule::returnStatement => {
+            //     dbg!(pair.into_inner());
+            //     Ast::Return {
+            //         term: Ast::Id(Id::new("return")).r(),
+            //     }
+            // }
             e @ _ => todo!("{:?}", e),
         }
     }

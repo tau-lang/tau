@@ -18,7 +18,8 @@ pub enum PrimitiveTypes {
 #[derive(Debug)]
 pub enum Primitive {
     String(String),
-    Number(i64),
+    Int(i64),
+    Float(f64),
 }
 
 #[derive(Debug)]
@@ -38,7 +39,7 @@ pub enum UnaryOp {
 
 #[derive(Debug)]
 pub enum Ast {
-    Primitive,
+    Primitive(Primitive),
     Id(Id),
     Composit {
         name: String,
@@ -80,7 +81,7 @@ pub enum Ast {
     Var {
         name: String,
         value: Rc<Ast>,
-        r#type: Type,
+        r#type: PrimitiveTypes,
     },
     Assignment {
         name: String,
