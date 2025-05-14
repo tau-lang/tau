@@ -6,7 +6,7 @@ impl Ast {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PrimitiveTypes {
     String,
     I64,
@@ -15,14 +15,14 @@ pub enum PrimitiveTypes {
     F32,
     Custom(String),
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Primitive {
     String(String),
     Int(i64),
     Float(f64),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum BinaryOp {
     Equal,
     NotEqual,
@@ -32,12 +32,12 @@ pub enum BinaryOp {
     Divide,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Ast {
     Primitive(Primitive),
     Id(Id),
@@ -93,13 +93,13 @@ pub enum Ast {
         body: Rc<Ast>,
     },
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Type {
     pub name: String,
     pub r#type: PrimitiveTypes,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Id {
     pub id: String,
 }

@@ -125,3 +125,26 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
         e @ _ => todo!("{:?}", e),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn imports() {
+        let src = "
+import math
+import mymod
+            ";
+        let mut tokens = TauParser::parse(Rule::root, src).unwrap_or_else(|e| panic!("{}", e));
+        assert_eq!(
+            parse_tau(tokens.next().unwrap()),
+            Ast::Block {
+                terms: vec![
+                    Ast::Imports(vec!["math".to_string(), "mymod".to_string()]),
+                    Ast::Block { terms: vec![] },
+                    Ast::Block { terms: vec![] }
+                ]
+            }
+        )
+    }
+}
