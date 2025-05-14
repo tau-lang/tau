@@ -82,7 +82,7 @@ fn main() {
                 Ast::Function {
                     name,
                     parameters: args,
-                    body: Ast::Id(Id::new("ee")).r(),
+                    body: body.r(),
                     return_type: ret_type,
                 }
             }
@@ -103,22 +103,26 @@ fn main() {
 
             Rule::numberValue => {
                 let inner = dbg!(pair.into_inner().last().unwrap());
-                match inner.clone().into_inner().next().unwrap().as_rule() {
-                    Rule::integer => Ast::Primitive(ast::Primitive::Int(
-                        inner.as_span().as_str().parse().unwrap(),
-                    )),
-                    Rule::float => Ast::Primitive(ast::Primitive::Float(
-                        inner.as_span().as_str().parse().unwrap(),
-                    )),
-                    r @ _ => panic!("expected int or float, got {:?}", r),
+                if let Some(typ) = inner.clone().into_inner().next() {
+                    match typ.as_rule() {
+                        Rule::integer => Ast::Primitive(ast::Primitive::Int(
+                            inner.as_span().as_str().parse().unwrap(),
+                        )),
+                        Rule::float => Ast::Primitive(ast::Primitive::Float(
+                            inner.as_span().as_str().parse().unwrap(),
+                        )),
+                        r @ _ => panic!("expected int or float, got {:?}", r),
+                    }
+                } else {
+                    Ast::Id(Id::new(inner.as_span().as_str()))
                 }
             }
-            // Rule::returnStatement => {
-            //     dbg!(pair.into_inner());
-            //     Ast::Return {
-            //         term: Ast::Id(Id::new("return")).r(),
-            //     }
-            // }
+            Rule::returnStatement => Ast::Return {
+                term: Ast::Block {
+                    terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
+                }
+                .r(),
+            },
             e @ _ => todo!("{:?}", e),
         }
     }
