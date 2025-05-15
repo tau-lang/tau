@@ -39,8 +39,51 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                 .collect(),
         },
         Rule::modificationStatement => {
-            dbg!(pair.into_inner());
-            todo!()
+            let mut inner = pair.into_inner();
+            // modificationStatement = { variable ~ ((assignOp ~ valueExpr) | unaryInc | unaryDec) }
+            let name = inner.next().unwrap().as_span().as_str();
+            let action = {
+                let i = inner.next().unwrap();
+                match i.as_rule() {
+                    Rule::unaryInc => Ast::BinaryOp {
+                        op: ast::BinaryOp::Add,
+                        lhs: ast::Ast::Id(Id::new(name)).r(),
+                        rhs: Ast::Primitive(ast::Primitive::Int(1)).r(),
+                    },
+                    Rule::unaryDec => Ast::BinaryOp {
+                        op: ast::BinaryOp::Subtract,
+                        lhs: ast::Ast::Id(Id::new(name)).r(),
+                        rhs: Ast::Primitive(ast::Primitive::Int(1)).r(),
+                    },
+                    Rule::assignOp => {
+                        let mut i = i.into_inner();
+                        let rhs = parse_tau(inner.next().unwrap()).r();
+                        match i.next().unwrap().as_rule() {
+                            Rule::mulAssign => Ast::BinaryOp {
+                                op: ast::BinaryOp::Multiply,
+                                lhs: ast::Ast::Id(Id::new(name)).r(),
+                                rhs,
+                            },
+                            Rule::addAssign => Ast::BinaryOp {
+                                op: ast::BinaryOp::Add,
+                                lhs: ast::Ast::Id(Id::new(name)).r(),
+                                rhs,
+                            },
+                            r @ _ => {
+                                panic!("expected one of mulAssign or addAssign but found: {:?}", r)
+                            }
+                        }
+                    }
+                    r @ _ => panic!(
+                        "expected one of unaryInc, unaryDec or assignOP but found: {:?}",
+                        r
+                    ),
+                }
+            };
+            Ast::Modification {
+                what: Id::new(name),
+                val: action.r(),
+            }
         }
         Rule::imports => Ast::Imports(
             pair.into_inner()

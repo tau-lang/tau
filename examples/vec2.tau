@@ -12,17 +12,17 @@ struct vec2 {
 //     return created
 // }
 
-fn example(x: i32): i32 {
-        let aNumber: i32 = 21
-        return aNumber * x
-
-}
-
-// fn add(self: vec2, x: f64, y: f64): vec2 {
-//     self.x *= x
-//     self.y *= y
-//     return self
+// fn example(x: i32): i32 {
+//         let aNumber: i32 = 21
+//         return aNumber * x
 // }
+
+fn add(self: vec2, x: f64, y: f64): vec2 {
+    x*=y
+    //self.x *= x
+    //self.y *= y
+    return self
+}
 
 // fn sub(self: vec2, x: f64, y: f64): vec2 {
 //     self.x *= x

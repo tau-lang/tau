@@ -94,6 +94,10 @@ pub enum Ast {
         conditional: Rc<Ast>,
         body: Rc<Ast>,
     },
+    Modification {
+        what: Id,
+        val: Rc<Ast>,
+    },
 }
 #[derive(Debug, PartialEq)]
 pub struct Type {
