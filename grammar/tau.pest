@@ -65,7 +65,7 @@ boolValue = {
 iterExpr  = { name | callStatement }
 
 variable = @{ name ~ ("." ~ name)* }
-name     = @{ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT)* }
+name     = @{ "_"* ~ (ASCII_ALPHA) ~ (ASCII_ALPHA | ASCII_DIGIT | "_")* }
 number   =  { float | integer }
 float    = @{ ("+" | "-")? ~ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* | "0") ~ "." ~ ASCII_DIGIT+ }
 integer  = @{ ("+" | "-")? ~ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* | "0") }
