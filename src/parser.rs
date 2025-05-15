@@ -105,11 +105,11 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                 fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
             }
         }
-        Rule::declarations | Rule::body | Rule::statement => Ast::Block {
+        Rule::declarations | Rule::body => Ast::Block {
             terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
         },
         // use if only one is expected to avoid too deep nesting with blocks
-        Rule::numberExpr | Rule::declaration | Rule::valueExpr => {
+        Rule::numberExpr | Rule::declaration | Rule::valueExpr | Rule::statement => {
             parse_tau(pair.into_inner().next().unwrap())
         }
         Rule::functionDecl => {
@@ -177,6 +177,8 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
 
 #[cfg(test)]
 mod test {
+    use crate::ast::Primitive;
+
     use super::*;
     #[test]
     fn composit_type() {
@@ -225,6 +227,44 @@ import mymod
                 terms: vec![
                     Ast::Imports(vec!["math".to_string(), "mymod".to_string()]),
                     Ast::Block { terms: vec![] },
+                    Ast::Block { terms: vec![] }
+                ]
+            }
+        )
+    }
+    #[test]
+    fn mul_assign() {
+        let src = "
+
+fn example(x: i32): void {
+    x*=2
+}
+            ";
+        let mut tokens = TauParser::parse(Rule::root, src).unwrap_or_else(|e| panic!("{}", e));
+        assert_eq!(
+            parse_tau(tokens.next().unwrap()),
+            Ast::Block {
+                terms: vec![
+                    Ast::Imports(vec![]),
+                    Ast::Block {
+                        terms: vec![Ast::Function {
+                            name: Id::new("example"),
+                            return_type: PrimitiveTypes::Unit,
+                            parameters: vec![Type {
+                                name: "x".to_string(),
+                                r#type: PrimitiveTypes::I32
+                            }],
+                            body: vec![Ast::Modification {
+                                what: Id::new("x"),
+                                val: Ast::BinaryOp {
+                                    op: ast::BinaryOp::Multiply,
+                                    lhs: Ast::Id(Id::new("x")).r(),
+                                    rhs: Ast::Primitive(Primitive::Int(2)).r(),
+                                }
+                                .r()
+                            }]
+                        }]
+                    },
                     Ast::Block { terms: vec![] }
                 ]
             }
