@@ -283,6 +283,12 @@ fn example(x: i32): void {
         )
     }
     #[test]
+    fn example() {
+        let tokens = TauParser::parse(Rule::root, include_str!("../examples/vec2.tau"))
+            .unwrap_or_else(|e| panic!("{}", e));
+        let _ = tokens.map(|pair| parse_tau(pair)).collect::<Vec<Ast>>();
+    }
+    #[test]
     fn function() {
         let src = "
 
