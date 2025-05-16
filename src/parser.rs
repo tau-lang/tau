@@ -40,7 +40,6 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
         },
         Rule::modificationStatement => {
             let mut inner = pair.into_inner();
-            // modificationStatement = { variable ~ ((assignOp ~ valueExpr) | unaryInc | unaryDec) }
             let name = inner.next().unwrap().as_span().as_str();
             let action = {
                 let i = inner.next().unwrap();
@@ -69,8 +68,21 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                                 lhs: ast::Ast::Id(Id::new(name)).r(),
                                 rhs,
                             },
+                            Rule::subAssign => Ast::BinaryOp {
+                                op: ast::BinaryOp::Subtract,
+                                lhs: ast::Ast::Id(Id::new(name)).r(),
+                                rhs,
+                            },
+                            Rule::divAssign => Ast::BinaryOp {
+                                op: ast::BinaryOp::Divide,
+                                lhs: ast::Ast::Id(Id::new(name)).r(),
+                                rhs,
+                            },
                             r @ _ => {
-                                panic!("expected one of mulAssign or addAssign but found: {:?}", r)
+                                panic!(
+                                    "expected one of mulAssign, divAssign, subAssign or addAssign but found: {:?}",
+                                    r
+                                )
                             }
                         }
                     }
