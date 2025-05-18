@@ -1,7 +1,8 @@
 use super::Rule;
+use super::error;
 use crate::ast::{self, Ast, Id, PrimitiveTypes, Type};
-use pest::{Parser as PParser, iterators::Pair};
-use pest_derive::Parser as PParser;
+use miette::SourceOffset;
+use pest::iterators::Pair;
 
 fn type_name(str: &str) -> PrimitiveTypes {
     match str {
@@ -25,32 +26,36 @@ fn typedef(pair: Pair<Rule>) -> Type {
         r @ _ => panic!("expected a typdef, found {:?} in {:?}", r, pair),
     }
 }
-fn struct_init_type(pair: Pair<Rule>) -> Vec<(String, Ast)> {
-    pair.into_inner()
+fn struct_init_type(pair: Pair<Rule>) -> Result<Vec<(String, Ast)>, error::Source> {
+    Ok(pair
+        .into_inner()
         .map(|p| match p.as_rule() {
             Rule::tablePair => {
                 let mut i = p.into_inner();
-                (
-                    i.next().unwrap().as_span().as_str().to_string(),
-                    parse_tau(i.next().unwrap()),
-                )
+                let name = i.next().unwrap().as_span().as_str().to_string();
+                let val = parse_tau(i.next().unwrap());
+                if let Ok(val) = val {
+                    Ok((name, val))
+                } else {
+                    Err(val.unwrap_err())
+                }
             }
             r @ _ => panic!("expected a tablePair, found {:?}", r),
         })
-        .collect()
+        .collect::<Result<Vec<(String, Ast)>, error::Source>>()?)
 }
 
-pub fn parse_tau(pair: Pair<Rule>) -> Ast {
-    match pair.as_rule() {
+pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
+    Ok(match pair.as_rule() {
         Rule::root => Ast::Block {
             terms: pair
                 .into_inner()
                 .map(|pair: Pair<Rule>| parse_tau(pair))
-                .collect(),
+                .collect::<Result<Vec<_>, error::Source>>()?,
         },
         Rule::tableExpr => Ast::CompositConstruction {
             what: Id::new(""),
-            values: struct_init_type(pair),
+            values: struct_init_type(pair)?,
         },
         Rule::modificationStatement => {
             let mut inner = pair.into_inner();
@@ -70,7 +75,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                     },
                     Rule::assignOp => {
                         let mut i = i.into_inner();
-                        let rhs = parse_tau(inner.next().unwrap()).r();
+                        let rhs = parse_tau(inner.next().unwrap())?.r();
                         match i.next().unwrap().as_rule() {
                             Rule::mulAssign => Ast::BinaryOp {
                                 op: ast::BinaryOp::Multiply,
@@ -132,11 +137,14 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
             }
         }
         Rule::declarations | Rule::body => Ast::Block {
-            terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
+            terms: pair
+                .into_inner()
+                .map(|pair| parse_tau(pair))
+                .collect::<Result<Vec<_>, error::Source>>()?,
         },
         // use if only one is expected to avoid too deep nesting with blocks
         Rule::numberExpr | Rule::declaration | Rule::valueExpr | Rule::statement => {
-            parse_tau(pair.into_inner().next().unwrap())
+            parse_tau(pair.into_inner().next().unwrap())?
         }
         Rule::functionDecl => {
             let mut inner = pair.into_inner();
@@ -155,7 +163,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                     .unwrap()
                     .into_inner()
                     .map(|pair| parse_tau(pair))
-                    .collect(),
+                    .collect::<Result<Vec<_>, error::Source>>()?,
 
                 return_type: ret_type,
             }
@@ -170,7 +178,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
             };
             Ast::Var {
                 name: n,
-                value: parse_tau(inner.next().unwrap()).r(),
+                value: parse_tau(inner.next().unwrap())?.r(),
                 r#type: t,
             }
         }
@@ -193,12 +201,15 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
         }
         Rule::returnStatement => Ast::Return {
             term: Ast::Block {
-                terms: pair.into_inner().map(|pair| parse_tau(pair)).collect(),
+                terms: pair
+                    .into_inner()
+                    .map(|pair| parse_tau(pair))
+                    .collect::<Result<Vec<_>, error::Source>>()?,
             }
             .r(),
         },
         e @ _ => todo!("{:?}", e),
-    }
+    })
 }
 
 // #[cfg(test)]
