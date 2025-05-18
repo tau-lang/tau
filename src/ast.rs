@@ -49,7 +49,6 @@ pub enum Ast {
         fields: Vec<Type>,
     },
     CompositConstruction {
-        what: Id,
         values: Vec<(String, Ast)>,
     },
     Enum {

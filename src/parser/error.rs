@@ -1,11 +1,12 @@
 use super::Rule;
 use miette::{Diagnostic, SourceOffset};
+use pest::iterators::Pair;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq, Diagnostic)]
 pub enum ParserError {
     #[error(transparent)]
-    Lexer(pest::error::Error<Rule>),
+    Lexer(Box<pest::error::Error<Rule>>),
 
     #[error("Empty Input")]
     EmptyInput,
@@ -18,7 +19,7 @@ pub enum ParserError {
 #[derive(Debug, Error, Diagnostic, PartialEq)]
 #[error("unexpexted source code")]
 pub struct Source {
-    pub cause: Unexpected,
+    pub cause: Expected,
     #[source_code]
     pub input: String,
     #[label("{cause}")]
@@ -26,7 +27,34 @@ pub struct Source {
 }
 
 #[derive(Debug, Error, Diagnostic, PartialEq)]
-pub enum Unexpected {
-    #[error("eee")]
-    Eeee,
+pub enum Expected {
+    #[error("Expected Type, found nothing")]
+    Type,
+    #[error("Expected Name, found nothing")]
+    Name,
+
+    #[error("Expected Import, found nothing")]
+    Import,
+
+    #[error("Expected something, found nothing")]
+    Ast,
+
+    #[error("Expected {0:?}, found {1:?}")]
+    Found(Rule, Rule),
+
+    #[error("Expected Integer, found {0:?}")]
+    Int(std::num::ParseIntError),
+
+    #[error("Expected Float, found {0:?}")]
+    Float(std::num::ParseFloatError),
+}
+
+pub(crate) fn expected_pair(expected: Expected, pair: &Pair<Rule>) -> Source {
+    let inpt = pair.get_input();
+    let (line, col) = pair.line_col();
+    Source {
+        cause: expected,
+        input: inpt.to_string(),
+        location: SourceOffset::from_location(inpt, line, col),
+    }
 }
