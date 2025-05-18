@@ -30,6 +30,21 @@ fn typedef(pair: Pair<Rule>) -> Type {
         r @ _ => panic!("expected a typdef, found {:?} in {:?}", r, pair),
     }
 }
+fn struct_init_type(pair: Pair<Rule>) -> Vec<(String, Ast)> {
+    pair.into_inner()
+        .map(|p| match p.as_rule() {
+            Rule::tablePair => {
+                let mut i = p.into_inner();
+                (
+                    i.next().unwrap().as_span().as_str().to_string(),
+                    parse_tau(i.next().unwrap()),
+                )
+            }
+            r @ _ => panic!("expected a tablePair, found {:?}", r),
+        })
+        .collect()
+}
+
 pub fn parse_tau(pair: Pair<Rule>) -> Ast {
     match pair.as_rule() {
         Rule::root => Ast::Block {
@@ -37,6 +52,10 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
                 .into_inner()
                 .map(|pair: Pair<Rule>| parse_tau(pair))
                 .collect(),
+        },
+        Rule::tableExpr => Ast::CompositConstruction {
+            what: Id::new(""),
+            values: struct_init_type(pair),
         },
         Rule::modificationStatement => {
             let mut inner = pair.into_inner();
@@ -112,7 +131,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Ast {
         Rule::typeDef => panic!("should not encounter raw typeDef in AST parsing"),
         Rule::structDecl => {
             let mut i = pair.clone().into_inner();
-            Ast::Composit {
+            Ast::CompositDef {
                 name: i.next().unwrap().as_span().as_str().to_string(),
                 fields: i.map(|pair| typedef(pair)).collect::<Vec<Type>>(),
             }
@@ -207,7 +226,7 @@ struct vec2 {
                 terms: vec![
                     Ast::Imports(vec![]),
                     Ast::Block {
-                        terms: vec![Ast::Composit {
+                        terms: vec![Ast::CompositDef {
                             name: "vec2".to_string(),
                             fields: vec![
                                 Type {

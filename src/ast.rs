@@ -44,9 +44,13 @@ pub enum Ast {
     Primitive(Primitive),
     Id(Id),
     Imports(Vec<String>),
-    Composit {
+    CompositDef {
         name: String,
         fields: Vec<Type>,
+    },
+    CompositConstruction {
+        what: Id,
+        values: Vec<(String, Ast)>,
     },
     Enum {
         variants: Vec<Type>,
