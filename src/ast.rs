@@ -1,8 +1,13 @@
+use crate::parser::{error, typechecked};
+use miette::SourceOffset;
 use std::rc::Rc;
 
 impl Ast {
     pub fn r(self) -> Rc<Self> {
         Rc::new(self)
+    }
+    pub fn check_types(self) -> Result<Self, error::CheckError> {
+        typechecked::typecheck(self)
     }
 }
 
@@ -49,6 +54,7 @@ pub enum Ast {
         fields: Vec<Type>,
     },
     CompositConstruction {
+        source: SourceOffset,
         values: Vec<(String, Ast)>,
     },
     Enum {
@@ -64,13 +70,16 @@ pub enum Ast {
         rhs: Rc<Ast>,
     },
     Call {
+        source: SourceOffset,
         callee: Id,
         args: Vec<Ast>,
     },
     Return {
+        source: SourceOffset,
         term: Rc<Ast>,
     },
     Block {
+        source: SourceOffset,
         terms: Vec<Ast>,
     },
     If {
@@ -79,6 +88,7 @@ pub enum Ast {
         alternative: Rc<Ast>,
     },
     Function {
+        source: SourceOffset,
         name: Id,
         return_type: PrimitiveTypes,
         parameters: Vec<Type>,
@@ -86,11 +96,13 @@ pub enum Ast {
     },
     Var {
         name: String,
+        source: SourceOffset,
         value: Rc<Ast>,
         r#type: PrimitiveTypes,
     },
     Assignment {
         name: String,
+        source: SourceOffset,
         value: Rc<Ast>,
     },
     While {

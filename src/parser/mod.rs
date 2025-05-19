@@ -1,5 +1,6 @@
 pub mod error;
 mod parser;
+pub(crate) mod typechecked;
 
 use crate::ast;
 use error::ParserError;
