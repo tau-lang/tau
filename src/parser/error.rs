@@ -7,14 +7,15 @@ use thiserror::Error;
 #[derive(Error, Debug, PartialEq, Diagnostic)]
 pub enum ParserError {
     #[error(transparent)]
-    Lexer(Box<pest::error::Error<Rule>>),
+    #[diagnostic(transparent)]
+    Lexer(#[from] LexError),
 
     #[error("Empty Input")]
     EmptyInput,
 
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parser(Source),
+    Parser(#[from] Source),
 }
 
 #[derive(Debug, Error, Diagnostic, PartialEq)]
@@ -42,9 +43,6 @@ pub enum Expected {
 
     #[error("Did not expect a typedef in this place")]
     NotTypeDef,
-
-    #[error("Did not expect a bool in this place")]
-    NotBool,
 
     #[error("Did not expect a import in this place")]
     NotImport,
@@ -95,4 +93,22 @@ pub fn type_got(expected: PrimitiveTypes, got: PrimitiveTypes, pair: Pair<Rule>)
         input: inpt.to_string(),
         location: SourceOffset::from_location(inpt, line, col),
     }
+}
+
+#[derive(Error, Debug, PartialEq, Diagnostic)]
+#[error("unexpected token")]
+pub struct LexError {
+    pub cause: LexErrorVarient,
+    #[source_code]
+    pub input: String,
+    #[label("error at {cause}")]
+    pub location: SourceOffset,
+}
+
+#[derive(Error, Debug, PartialEq, Diagnostic)]
+pub enum LexErrorVarient {
+    #[error("custom lexing error")]
+    Custom(String),
+    #[error("error processing input, expected a {0:?}")]
+    Parsing(Rule),
 }

@@ -87,6 +87,7 @@ pub enum Ast {
     If {
         conditional: Rc<Ast>,
         consequence: Rc<Ast>,
+        otherwise: Option<Rc<Ast>>,
     },
     Function {
         source: SourceOffset,

@@ -106,8 +106,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                     Rule::assignOp => {
                         let mut i = i.into_inner();
                         let rhs =
-                            parse_tau(inner.next().ok_or(expected_pair(Expected::Ast, &pair))?)?
-                                .r();
+                            parse_tau(inner.next().ok_or(expected_pair(Expected::Ast, &pair))?)?;
                         match i
                             .next()
                             .ok_or(expected_pair(Expected::Ast, &pair))?
@@ -116,23 +115,24 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                             Rule::mulAssign => Ast::BinaryOp {
                                 op: ast::BinaryOp::Multiply,
                                 lhs: ast::Ast::Id(Id::new(name)).r(),
-                                rhs,
+                                rhs: rhs.r(),
                             },
                             Rule::addAssign => Ast::BinaryOp {
                                 op: ast::BinaryOp::Add,
                                 lhs: ast::Ast::Id(Id::new(name)).r(),
-                                rhs,
+                                rhs: rhs.r(),
                             },
                             Rule::subAssign => Ast::BinaryOp {
                                 op: ast::BinaryOp::Subtract,
                                 lhs: ast::Ast::Id(Id::new(name)).r(),
-                                rhs,
+                                rhs: rhs.r(),
                             },
                             Rule::divAssign => Ast::BinaryOp {
                                 op: ast::BinaryOp::Divide,
+                                rhs: rhs.r(),
                                 lhs: ast::Ast::Id(Id::new(name)).r(),
-                                rhs,
                             },
+                            Rule::assign => rhs,
                             r => Err(expected_pair(
                                 Expected::OneOf(
                                     Box::new([
@@ -174,7 +174,18 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
         ),
         Rule::typeDef => Err(expected_pair(Expected::NotTypeDef, &pair))?,
         Rule::import => Err(expected_pair(Expected::NotImport, &pair))?,
-        Rule::boolValue => Err(expected_pair(Expected::NotBool, &pair))?,
+        Rule::boolValue => {
+            let n = pair
+                .clone()
+                .into_inner()
+                .next()
+                .ok_or(expected_pair(Expected::Bool, &pair))?;
+            match n.as_span().as_str() {
+                "true" => Ast::Primitive(ast::Primitive::True),
+                "false" => Ast::Primitive(ast::Primitive::True),
+                s => Err(expected_pair(Expected::Boolean(s.to_string()), &pair))?,
+            }
+        }
         Rule::structDecl => {
             let mut i = pair.clone().into_inner();
             Ast::CompositDef {
@@ -198,36 +209,53 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
         },
         Rule::boolExpr => {
             let mut i = pair.clone().into_inner();
-            let n = i.next().ok_or(expected_pair(Expected::Bool, &pair))?;
-            match n.as_rule() {
-                Rule::boolValue => match n.as_span().as_str() {
-                    "true" => Ast::Primitive(ast::Primitive::True),
-                    "false" => Ast::Primitive(ast::Primitive::True),
-                    s => Err(expected_pair(Expected::Boolean(s.to_string()), &pair))?,
-                },
-                r => Err(expected_pair(Expected::Found(Rule::boolValue, r), &pair))?,
-            }
+            parse_tau(i.next().ok_or(expected_pair(Expected::Bool, &pair))?)?
         }
-        Rule::elseIfFlow => {
-            dbg!(pair.into_inner());
-            todo!("elseIfFlow")
-        }
-        Rule::elseFlow => {
+        Rule::whileFlow => {
             let mut i = pair.clone().into_inner();
-            Ast::If {
-                conditional: Ast::UnaryOp {
-                    op: ast::UnaryOp::Not,
-                    term: parse_tau(i.next().ok_or(expected_pair(Expected::Bool, &pair))?)?.r(),
-                }
-                .r(),
-                consequence: parse_tau(i.next().ok_or(expected_pair(Expected::Ast, &pair))?)?.r(),
+            Ast::While {
+                conditional: parse_tau(i.next().ok_or(expected_pair(Expected::Bool, &pair))?)?.r(),
+                body: parse_tau(i.next().ok_or(expected_pair(Expected::Ast, &pair))?)?.r(),
             }
         }
+        // elseIfFlow and elseFlow not expected error
         Rule::ifFlow => {
             let mut i = pair.clone().into_inner();
             Ast::If {
                 conditional: parse_tau(i.next().ok_or(expected_pair(Expected::Bool, &pair))?)?.r(),
                 consequence: parse_tau(i.next().ok_or(expected_pair(Expected::Ast, &pair))?)?.r(),
+                otherwise: {
+                    if let Some(next) = i.next() {
+                        let x = match next.as_rule() {
+                            Rule::elseIfFlow => {
+                                dbg!(pair.into_inner());
+                                todo!("elseIfFlow")
+                            }
+                            Rule::elseFlow => {
+                                let mut i = pair.clone().into_inner();
+                                Ast::If {
+                                    conditional: Ast::UnaryOp {
+                                        op: ast::UnaryOp::Not,
+                                        term: parse_tau(
+                                            i.next().ok_or(expected_pair(Expected::Bool, &pair))?,
+                                        )?
+                                        .r(),
+                                    }
+                                    .r(),
+                                    consequence: parse_tau(
+                                        i.next().ok_or(expected_pair(Expected::Ast, &pair))?,
+                                    )?
+                                    .r(),
+                                    otherwise: None,
+                                }
+                            }
+                            _ => todo!(),
+                        };
+                        Some(x.r())
+                    } else {
+                        None
+                    }
+                },
             }
         }
         // use if only one is expected to avoid too deep nesting with blocks

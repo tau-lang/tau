@@ -1,35 +1,37 @@
-import math
-import mymod
+//import math
+//import mymod
 
-struct vec2 {
-   x: f64,
-   y: f64
-}
+//struct vec2 {
+//   x: f64,
+//   y: f64
+//}
 
 // const pi: f64 = 3
-fn create(x: f64, y: f64): vec2 {
-    let created: vec2 = { x=2, y=y }
-    return created
-}
+//fn create(x: f64, y: f64): vec2 {
+//    let created: vec2 = { x=2, y=y }
+ //   return created
+//}
 
 fn example(x: i32): i32 {
-        let aNumber: i32 = 21
-        return aNumber * x
+        if  true {
+                x = 1
+        } else if false {
+
+         } else {
+
+         }
 }
 
-fn add(self: vec2, x: f64, y: f64): vec2 {
-    x*=y
-    self.x *= x
-    self.y *= y
-    if true {
-        return self
-    } else {
-        self.x = 2
-    }
-}
+// fn add(self: vec2, x: f64, y: f64): vec2 {
+//    x*=y
+//    self.x *= x
+//    self.y *= y
+//    return self
+//
+//}
 
-fn sub(self: vec2, x: f64, y: f64): vec2 {
-    self.x *= x
-    self.y -= y
-    return self
-}
+//fn sub(self: vec2, x: f64, y: f64): vec2 {
+//    self.x *= x
+//    self.y -= y
+//    return self
+//}
