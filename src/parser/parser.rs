@@ -133,18 +133,27 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                                 lhs: ast::Ast::Id(Id::new(name)).r(),
                                 rhs,
                             },
-                            r => {
-                                panic!(
-                                    "expected one of mulAssign, divAssign, subAssign or addAssign but found: {:?}",
-                                    r
-                                )
-                            }
+                            r => Err(expected_pair(
+                                Expected::OneOf(
+                                    Box::new([
+                                        Rule::mulAssign,
+                                        Rule::divAssign,
+                                        Rule::subAssign,
+                                        Rule::addAssign,
+                                    ]),
+                                    r,
+                                ),
+                                &pair,
+                            ))?,
                         }
                     }
-                    r => panic!(
-                        "expected one of unaryInc, unaryDec or assignOP but found: {:?}",
-                        r
-                    ),
+                    r => Err(expected_pair(
+                        Expected::OneOf(
+                            Box::new([Rule::unaryInc, Rule::unaryDec, Rule::assignOp]),
+                            r,
+                        ),
+                        &pair,
+                    ))?,
                 }
             };
             Ast::Modification {
@@ -163,7 +172,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                 })
                 .collect::<Result<Vec<_>, error::Source>>()?,
         ),
-        Rule::typeDef => panic!("should not encounter raw typeDef in AST parsing"),
+        Rule::typeDef => Err(expected_pair(Expected::NotTypeDef, &pair))?,
         Rule::structDecl => {
             let mut i = pair.clone().into_inner();
             Ast::CompositDef {
@@ -286,7 +295,10 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                             .parse()
                             .map_err(|e| expected_pair(Expected::Float(e), &pair))?,
                     )),
-                    r => panic!("expected int or float, got {:?}", r),
+                    r => Err(expected_pair(
+                        Expected::OneOf(Box::new([Rule::float, Rule::integer]), r),
+                        &pair,
+                    ))?,
                 }
             } else {
                 Ast::Id(Id::new(inner.as_span().as_str()))

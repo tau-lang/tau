@@ -40,8 +40,14 @@ pub enum Expected {
     #[error("Expected something, found nothing")]
     Ast,
 
+    #[error("Did not expect a typedef in this place")]
+    NotTypeDef,
+
     #[error("Expected {0:?}, found {1:?}")]
     Found(Rule, Rule),
+
+    #[error("Expected one of {0:?}, found {1:?}")]
+    OneOf(Box<[Rule]>, Rule),
 
     #[error("Expected Integer, found {0:?}")]
     Int(std::num::ParseIntError),
