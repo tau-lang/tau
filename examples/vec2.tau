@@ -21,7 +21,11 @@ fn add(self: vec2, x: f64, y: f64): vec2 {
     x*=y
     self.x *= x
     self.y *= y
-    return self
+    if true {
+        return self
+    } else {
+        self.x = 2
+    }
 }
 
 fn sub(self: vec2, x: f64, y: f64): vec2 {

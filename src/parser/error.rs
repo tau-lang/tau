@@ -43,6 +43,12 @@ pub enum Expected {
     #[error("Did not expect a typedef in this place")]
     NotTypeDef,
 
+    #[error("Did not expect a bool in this place")]
+    NotBool,
+
+    #[error("Did not expect a import in this place")]
+    NotImport,
+
     #[error("Expected {0:?}, found {1:?}")]
     Found(Rule, Rule),
 
@@ -54,6 +60,12 @@ pub enum Expected {
 
     #[error("Expected Float, found {0:?}")]
     Float(std::num::ParseFloatError),
+
+    #[error("Expected Boolean, found {0:?}")]
+    Boolean(String),
+
+    #[error("Expected Boolean, found nothing")]
+    Bool,
 }
 
 pub(crate) fn expected_pair(expected: Expected, pair: &Pair<Rule>) -> Source {

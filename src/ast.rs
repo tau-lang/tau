@@ -27,6 +27,8 @@ pub enum Primitive {
     Int(i64),
     Float(f64),
     Unit,
+    True,
+    False,
 }
 
 #[derive(Debug, PartialEq)]
@@ -85,7 +87,6 @@ pub enum Ast {
     If {
         conditional: Rc<Ast>,
         consequence: Rc<Ast>,
-        alternative: Rc<Ast>,
     },
     Function {
         source: SourceOffset,

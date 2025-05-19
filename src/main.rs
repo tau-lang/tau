@@ -6,7 +6,7 @@ pub mod parser;
 use parser::{Parser, TauParser};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ast: ast::Ast = dbg!(TauParser::parse(include_str!("../examples/vec2.tau")))?;
-    dbg!(ast.check_types())?;
+    let ast: ast::Ast = TauParser::parse(include_str!("../examples/vec2.tau"))?;
+    // dbg!(ast.check_types())?;
     Ok(())
 }

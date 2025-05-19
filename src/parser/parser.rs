@@ -173,6 +173,8 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                 .collect::<Result<Vec<_>, error::Source>>()?,
         ),
         Rule::typeDef => Err(expected_pair(Expected::NotTypeDef, &pair))?,
+        Rule::import => Err(expected_pair(Expected::NotImport, &pair))?,
+        Rule::boolValue => Err(expected_pair(Expected::NotBool, &pair))?,
         Rule::structDecl => {
             let mut i = pair.clone().into_inner();
             Ast::CompositDef {
@@ -194,8 +196,46 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
                 .map(|pair| parse_tau(pair))
                 .collect::<Result<Vec<_>, error::Source>>()?,
         },
+        Rule::boolExpr => {
+            let mut i = pair.clone().into_inner();
+            let n = i.next().ok_or(expected_pair(Expected::Bool, &pair))?;
+            match n.as_rule() {
+                Rule::boolValue => match n.as_span().as_str() {
+                    "true" => Ast::Primitive(ast::Primitive::True),
+                    "false" => Ast::Primitive(ast::Primitive::True),
+                    s => Err(expected_pair(Expected::Boolean(s.to_string()), &pair))?,
+                },
+                r => Err(expected_pair(Expected::Found(Rule::boolValue, r), &pair))?,
+            }
+        }
+        Rule::elseIfFlow => {
+            dbg!(pair.into_inner());
+            todo!("elseIfFlow")
+        }
+        Rule::elseFlow => {
+            let mut i = pair.clone().into_inner();
+            Ast::If {
+                conditional: Ast::UnaryOp {
+                    op: ast::UnaryOp::Not,
+                    term: parse_tau(i.next().ok_or(expected_pair(Expected::Bool, &pair))?)?.r(),
+                }
+                .r(),
+                consequence: parse_tau(i.next().ok_or(expected_pair(Expected::Ast, &pair))?)?.r(),
+            }
+        }
+        Rule::ifFlow => {
+            let mut i = pair.clone().into_inner();
+            Ast::If {
+                conditional: parse_tau(i.next().ok_or(expected_pair(Expected::Bool, &pair))?)?.r(),
+                consequence: parse_tau(i.next().ok_or(expected_pair(Expected::Ast, &pair))?)?.r(),
+            }
+        }
         // use if only one is expected to avoid too deep nesting with blocks
-        Rule::numberExpr | Rule::declaration | Rule::valueExpr | Rule::statement => parse_tau(
+        Rule::controlFlow
+        | Rule::numberExpr
+        | Rule::declaration
+        | Rule::valueExpr
+        | Rule::statement => parse_tau(
             pair.clone()
                 .into_inner()
                 .next()
@@ -315,7 +355,7 @@ pub fn parse_tau(pair: Pair<Rule>) -> Result<Ast, super::error::Source> {
             }
             .r(),
         },
-        e => todo!("{:?}", e),
+        r => todo!("{r:?}"),
     })
 }
 
