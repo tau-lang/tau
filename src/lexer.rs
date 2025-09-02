@@ -45,6 +45,7 @@ pub enum TokenType {
     Leq,
     Eq,
     Neq,
+    Not,
     And,
     Or,
     Xor,
@@ -146,7 +147,7 @@ impl Lexer<'_> {
                 }
                 '&' => {
                     if self.matchc('&') {
-                        self.add_token(TokenType::Add);
+                        self.add_token(TokenType::And);
                     } else {
                         panic!("Unexpected character.");
                     }
@@ -164,6 +165,30 @@ impl Lexer<'_> {
                         TokenType::Eq
                     } else {
                         TokenType::Set
+                    };
+                    self.add_token(token_type);
+                }
+                '!' => {
+                    let token_type = if self.matchc('=') {
+                        TokenType::Neq
+                    } else {
+                        TokenType::Not
+                    };
+                    self.add_token(token_type);
+                }
+                '>' => {
+                    let token_type = if self.matchc('=') {
+                        TokenType::Geq
+                    } else {
+                        TokenType::Gre
+                    };
+                    self.add_token(token_type);
+                }
+                '<' => {
+                    let token_type = if self.matchc('=') {
+                        TokenType::Leq
+                    } else {
+                        TokenType::Low
                     };
                     self.add_token(token_type);
                 }
@@ -200,7 +225,10 @@ impl Lexer<'_> {
 
         let token_type = match text.as_str() {
             "import" => TokenType::Import,
+            "struct" => TokenType::Struct,
             "fn" => TokenType::Function,
+            "const" => TokenType::Const,
+            "let" => TokenType::Let,
             "if" => TokenType::If,
             "else" => TokenType::Else,
             "for" => TokenType::For,
