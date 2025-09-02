@@ -269,11 +269,11 @@ impl Lexer<'_> {
     }
 
     fn is_alpha(c: char) -> bool {
-        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+        c.is_alphabetic() || c == '_'
     }
 
     fn is_digit(c: char) -> bool {
-        c >= '0' && c <= '9'
+        c.is_ascii_digit()
     }
 
     fn is_alpha_numeric(c: char) -> bool {
