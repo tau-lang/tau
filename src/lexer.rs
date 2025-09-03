@@ -1,7 +1,8 @@
+use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     token_type: TokenType,
     line: u32,
@@ -16,15 +17,21 @@ impl Token {
             column,
         }
     }
+
+    pub fn get_type(&self) -> &TokenType {
+        &self.token_type
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Brackets
-    ParenLeft,
-    ParenRight,
-    BraceLeft,
-    BraceRight,
+    ParenLeft,    // (
+    ParenRight,   // )
+    BraceLeft,    // {
+    BraceRight,   // }
+    BracketLeft,  // [
+    BracketRight, // ]
     Dot,
     Comma,
     Colon,
@@ -74,7 +81,7 @@ pub enum TokenType {
 
 pub struct Lexer<'a> {
     source: Peekable<Chars<'a>>,
-    tokens: Vec<Token>,
+    tokens: VecDeque<Token>,
     line: u32,
     column: u32,
 }
@@ -83,13 +90,13 @@ impl Lexer<'_> {
     pub fn new<'a>(source: Chars<'a>) -> Lexer<'a> {
         Lexer {
             source: source.peekable(),
-            tokens: vec![],
+            tokens: VecDeque::new(),
             line: 1,
             column: 0,
         }
     }
 
-    pub fn scan(mut self) -> Vec<Token> {
+    pub fn scan(mut self) -> VecDeque<Token> {
         while !self.is_at_end() {
             self.scan_token();
         }
@@ -104,6 +111,8 @@ impl Lexer<'_> {
                 ')' => self.add_token(TokenType::ParenRight),
                 '{' => self.add_token(TokenType::BraceLeft),
                 '}' => self.add_token(TokenType::BraceRight),
+                '[' => self.add_token(TokenType::BracketLeft),
+                ']' => self.add_token(TokenType::BracketRight),
                 ',' => self.add_token(TokenType::Comma),
                 '.' => self.add_token(TokenType::Dot),
                 ':' => self.add_token(TokenType::Colon),
@@ -243,7 +252,7 @@ impl Lexer<'_> {
 
     fn number(&mut self, c: char) {
         let mut text = String::from(c);
-        while Lexer::is_digit(*self.peek().unwrap()) {
+        while !self.is_at_end() && Lexer::is_digit(*self.peek().unwrap()) {
             match self.advance() {
                 Some(c) => {
                     text.push(c);
@@ -319,6 +328,6 @@ impl Lexer<'_> {
 
     fn add_token(&mut self, token_type: TokenType) {
         self.tokens
-            .push(Token::new(token_type, self.line, self.column))
+            .push_back(Token::new(token_type, self.line, self.column))
     }
 }
