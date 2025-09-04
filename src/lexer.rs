@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
-use std::convert::Into;
 use std::iter::Peekable;
 use std::str::Chars;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Token {
     token_type: TokenType,
     line: u32,
@@ -24,13 +24,14 @@ impl Token {
     }
 }
 
-impl Into<TokenType> for Token {
-    fn into(self) -> TokenType {
-        self.token_type
+impl From<Token> for TokenType {
+    fn from(value: Token) -> Self {
+        value.token_type
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum TokenType {
     // Brackets
     ParenLeft,    // (
@@ -92,10 +93,7 @@ pub enum TokenType {
 
 impl TokenType {
     pub fn is_identifer(&self) -> bool {
-        match self {
-            Self::Identifier(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Identifier(_))
     }
 }
 
@@ -107,7 +105,7 @@ pub struct Lexer<'a> {
 }
 
 impl Lexer<'_> {
-    pub fn new<'a>(source: Chars<'a>) -> Lexer<'a> {
+    pub fn new(source: Chars<'_>) -> Lexer<'_> {
         Lexer {
             source: source.peekable(),
             tokens: VecDeque::new(),
@@ -125,8 +123,8 @@ impl Lexer<'_> {
     }
 
     fn scan_token(&mut self) {
-        match self.advance() {
-            Some(c) => match c {
+        if let Some(c) = self.advance() {
+            match c {
                 '(' => self.add_token(TokenType::ParenLeft),
                 ')' => self.add_token(TokenType::ParenRight),
                 '{' => self.add_token(TokenType::BraceLeft),
@@ -236,20 +234,16 @@ impl Lexer<'_> {
                         panic!("Unexpected character '{}'.", c)
                     }
                 }
-            },
-            _ => {}
+            }
         }
     }
 
     fn identifier(&mut self, c: char) {
         let mut text = String::from(c);
         while Lexer::is_alpha_numeric(*self.peek().unwrap()) {
-            match self.advance() {
-                Some(c) => {
-                    text.push(c);
-                }
-                _ => {}
-            };
+            if let Some(c) = self.advance() {
+                text.push(c)
+            }
         }
 
         let token_type = match text.as_str() {
@@ -276,11 +270,8 @@ impl Lexer<'_> {
     fn number(&mut self, c: char) {
         let mut text = String::from(c);
         while !self.is_at_end() && Lexer::is_digit(*self.peek().unwrap()) {
-            match self.advance() {
-                Some(c) => {
-                    text.push(c);
-                }
-                _ => {}
+            if let Some(c) = self.advance() {
+                text.push(c);
             }
         }
 
@@ -290,14 +281,11 @@ impl Lexer<'_> {
     fn string(&mut self) {
         let mut text = String::new();
         while !self.is_at_end() && *self.peek().unwrap() != '"' {
-            match self.advance() {
-                Some(c) => {
-                    if c == '\n' {
-                        self.line += 1;
-                    }
-                    text.push(c);
+            if let Some(c) = self.advance() {
+                if c == '\n' {
+                    self.line += 1;
                 }
-                _ => {}
+                text.push(c);
             }
         }
 
@@ -341,7 +329,7 @@ impl Lexer<'_> {
     }
 
     fn is_at_end(&mut self) -> bool {
-        self.peek() == None
+        self.peek().is_none()
     }
 
     fn advance(&mut self) -> Option<char> {

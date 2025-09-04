@@ -2,6 +2,7 @@ use crate::lexer::Token;
 use std::rc::Rc;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Expr {
     Unary {
         // -right
@@ -38,6 +39,7 @@ pub enum Expr {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Stmt {
     Block {
         statements: Vec<Rc<Stmt>>,
@@ -64,6 +66,7 @@ pub enum Stmt {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Decl {
     Import(Token),
     Struct {
