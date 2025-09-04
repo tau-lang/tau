@@ -69,6 +69,7 @@ pub enum Decl {
     Struct {
         name: Token,
         fields: Vec<(Token, Token)>,
+        methods: Vec<Rc<Decl>>,
     },
     Function {
         name: Token,

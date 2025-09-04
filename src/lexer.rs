@@ -97,13 +97,6 @@ impl TokenType {
             _ => false,
         }
     }
-
-    pub fn is_variable(&self) -> bool {
-        match self {
-            Self::Identifier(_) | Self::VSelf => true,
-            _ => false,
-        }
-    }
 }
 
 pub struct Lexer<'a> {

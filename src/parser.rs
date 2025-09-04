@@ -47,7 +47,7 @@ impl Parser {
 
     fn decl_function(&mut self) -> Decl {
         let name = self.advance();
-        assert!(name.get_type().is_identifer());
+        assert!(name.get_type().is_identifer(), "{:?}", name);
         self.consume(&TokenType::ParenLeft);
         let mut params = Vec::new();
         while *self.peek().get_type() != TokenType::ParenRight {
@@ -59,7 +59,7 @@ impl Parser {
         self.consume(&TokenType::ParenRight);
         self.consume(&TokenType::Colon);
         let return_type = self.advance();
-        assert!(name.get_type().is_identifer());
+        assert!(name.get_type().is_identifer(), "{:?}", name);
         let body = self.stmt();
         Decl::Function {
             name,
@@ -73,15 +73,27 @@ impl Parser {
         let name = self.advance();
         assert!(name.get_type().is_identifer());
         self.consume(&TokenType::BraceLeft);
+
         let mut fields = Vec::new();
-        while *self.peek().get_type() != TokenType::BraceRight {
+        while self.peek().get_type().is_identifer() {
             fields.push(self.decl_type_def());
-            if *self.peek().get_type() != TokenType::BraceRight {
+            if *self.peek().get_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma);
             }
         }
+
+        let mut methods = Vec::new();
+        while *self.peek().get_type() != TokenType::BraceRight {
+            self.consume(&TokenType::Function);
+            methods.push(Rc::new(self.decl_function()));
+        }
+
         self.consume(&TokenType::BraceRight);
-        Decl::Struct { name, fields }
+        Decl::Struct {
+            name,
+            fields,
+            methods,
+        }
     }
 
     fn decl_const(&mut self) -> Decl {
@@ -97,7 +109,7 @@ impl Parser {
 
     fn decl_type_def(&mut self) -> (Token, Token) {
         let name = self.advance();
-        assert!(name.get_type().is_variable(), "{:?}", name);
+        assert!(name.get_type().is_identifer(), "{:?}", name);
         self.consume(&TokenType::Colon);
         let type_name = self.advance();
         assert!(type_name.get_type().is_identifer(), "{:?}", type_name);
