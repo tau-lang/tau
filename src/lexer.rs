@@ -1,8 +1,9 @@
 use std::collections::VecDeque;
+use std::convert::Into;
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Token {
     token_type: TokenType,
     line: u32,
@@ -20,6 +21,12 @@ impl Token {
 
     pub fn get_type(&self) -> &TokenType {
         &self.token_type
+    }
+}
+
+impl Into<TokenType> for Token {
+    fn into(self) -> TokenType {
+        self.token_type
     }
 }
 
@@ -61,22 +68,34 @@ pub enum TokenType {
     Import,
     Function,
     Struct,
+    Enum,
     If,
     Else,
     While,
     For,
+    Match,
     Let,
     Const,
     Return,
     Break,
 
     // Literal
+    Bool(bool),
     Number(i32),
     String(String),
     Identifier(String),
 
     // Misc
     Eof,
+}
+
+impl TokenType {
+    pub fn is_identifer(&self) -> bool {
+        match self {
+            Self::Identifier(_) => true,
+            _ => false,
+        }
+    }
 }
 
 pub struct Lexer<'a> {

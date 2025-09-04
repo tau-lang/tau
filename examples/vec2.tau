@@ -7,8 +7,8 @@ struct vec2 {
 
 const pi: f64 = 3
 
-fn create(x: 64, y: f64): vec2 {
-    let created: vec2 = { x=x, y=y }
+fn new(x: f64, y: f64): vec2 {
+    let created = vec2 { x=x, y=y }
     return created
 }
 
@@ -22,4 +22,21 @@ fn sub(self: vec2, x: f64, y: f64): vec2 {
     self.x *= x
     self.y -= y
     return self
+}
+
+fn norm(self: vec2): vec2 {
+    let mag = self.magnitude()
+    if (mag != 0) {
+        self.x /= mag
+        self.y /= mag
+    }
+    return self
+}
+
+fn copy(self: vec2): vec2 {
+    return new(self.x, self.y)
+}
+
+fn magnitude(self: vec2): f64 {
+    return sqrt(self.x * self.x + self.y * self.y)
 }

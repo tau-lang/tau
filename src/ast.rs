@@ -14,18 +14,6 @@ pub enum Expr {
         operator: Token,
         right: Rc<Expr>,
     },
-    Set {
-        // object.name = right
-        object: Rc<Expr>,
-        name: String,
-        operator: Token,
-        right: Rc<Expr>,
-    },
-    Get {
-        // object.name
-        object: Rc<Expr>,
-        name: String,
-    },
     Index {
         // object[index]
         object: Rc<Expr>,
@@ -36,14 +24,12 @@ pub enum Expr {
         callee: Rc<Expr>,
         arguments: Vec<Rc<Expr>>,
     },
+    Create {
+        struct_name: Token,
+        fields: Vec<(Token, Rc<Expr>)>,
+    },
     Literal(Token),
-    Variable(String),
-}
-
-#[derive(Debug)]
-pub struct TypeDef {
-    var: String,
-    var_type: String,
+    Variable(Token),
 }
 
 #[derive(Debug)]
@@ -51,23 +37,13 @@ pub enum Stmt {
     Block {
         statements: Vec<Rc<Stmt>>,
     },
-    Struct {
-        name: String,
-        fields: Vec<TypeDef>,
-    },
-    Function {
-        name: String,
-        return_type: String,
-        params: Vec<TypeDef>,
-        body: Rc<Stmt>,
-    },
     If {
         condition: Expr,
         if_branch: Rc<Stmt>,
         else_branch: Option<Rc<Stmt>>,
     },
     Let {
-        name: String,
+        name: Token,
         initializer: Expr,
     },
     Return {
@@ -79,9 +55,30 @@ pub enum Stmt {
         body: Rc<Stmt>,
     },
     For {
-        initializer: Expr,
+        initializer: Rc<Stmt>,
         condition: Expr,
         increment: Expr,
         body: Rc<Stmt>,
+    },
+    Expr(Expr),
+}
+
+#[derive(Debug)]
+pub enum Decl {
+    Import(Token),
+    Struct {
+        name: Token,
+        fields: Vec<(Token, Token)>,
+    },
+    Function {
+        name: Token,
+        return_type: Token,
+        params: Vec<(Token, Token)>,
+        body: Stmt,
+    },
+    Const {
+        name: Token,
+        var_type: Token,
+        initializer: Expr,
     },
 }
