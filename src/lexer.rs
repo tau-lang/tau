@@ -78,6 +78,7 @@ pub enum TokenType {
     Const,
     Return,
     Break,
+    VSelf,
 
     // Literal
     Bool(bool),
@@ -93,6 +94,13 @@ impl TokenType {
     pub fn is_identifer(&self) -> bool {
         match self {
             Self::Identifier(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_variable(&self) -> bool {
+        match self {
+            Self::Identifier(_) | Self::VSelf => true,
             _ => false,
         }
     }
@@ -263,6 +271,9 @@ impl Lexer<'_> {
             "while" => TokenType::While,
             "return" => TokenType::Return,
             "break" => TokenType::Break,
+            "self" => TokenType::VSelf,
+            "true" => TokenType::Bool(true),
+            "false" => TokenType::Bool(false),
             _ => TokenType::Identifier(text),
         };
 

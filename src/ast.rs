@@ -28,6 +28,11 @@ pub enum Expr {
         struct_name: Token,
         fields: Vec<(Token, Rc<Expr>)>,
     },
+    If {
+        condition: Rc<Expr>,
+        if_branch: Rc<Stmt>,
+        else_branch: Option<Rc<Stmt>>,
+    },
     Literal(Token),
     Variable(Token),
 }
@@ -36,11 +41,6 @@ pub enum Expr {
 pub enum Stmt {
     Block {
         statements: Vec<Rc<Stmt>>,
-    },
-    If {
-        condition: Expr,
-        if_branch: Rc<Stmt>,
-        else_branch: Option<Rc<Stmt>>,
     },
     Let {
         name: Token,

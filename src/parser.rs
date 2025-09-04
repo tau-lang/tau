@@ -97,7 +97,7 @@ impl Parser {
 
     fn decl_type_def(&mut self) -> (Token, Token) {
         let name = self.advance();
-        assert!(name.get_type().is_identifer());
+        assert!(name.get_type().is_variable(), "{:?}", name);
         self.consume(&TokenType::Colon);
         let type_name = self.advance();
         assert!(type_name.get_type().is_identifer(), "{:?}", type_name);
@@ -107,7 +107,6 @@ impl Parser {
     pub(crate) fn stmt(&mut self) -> Stmt {
         match self.peek().get_type() {
             TokenType::BraceLeft => self.stmt_block(),
-            TokenType::If => self.stmt_if(),
             TokenType::Let => self.stmt_let(),
             TokenType::Return => {
                 self.advance();
@@ -130,25 +129,6 @@ impl Parser {
         }
         self.consume(&TokenType::BraceRight);
         Stmt::Block { statements }
-    }
-
-    fn stmt_if(&mut self) -> Stmt {
-        self.advance();
-        self.consume(&TokenType::ParenLeft);
-        let condition = self.expr();
-        self.consume(&TokenType::ParenRight);
-        let if_branch = Rc::new(self.stmt());
-        let else_branch = if *self.peek().get_type() == TokenType::Else {
-            self.consume(&TokenType::Else);
-            Some(Rc::new(self.stmt()))
-        } else {
-            None
-        };
-        Stmt::If {
-            condition,
-            if_branch,
-            else_branch,
-        }
     }
 
     fn stmt_let(&mut self) -> Stmt {
@@ -176,7 +156,7 @@ impl Parser {
     fn expr_bp(&mut self, min_bp: u8) -> Expr {
         let next = self.advance();
         let mut lhs = match next.get_type() {
-            TokenType::Number(_) | TokenType::String(_) => Expr::Literal(next),
+            TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => Expr::Literal(next),
             TokenType::Identifier(_) => {
                 if *self.peek().get_type() == TokenType::BraceLeft {
                     self.expr_create(next)
@@ -184,8 +164,10 @@ impl Parser {
                     Expr::Variable(next)
                 }
             }
+            TokenType::VSelf => Expr::Variable(next),
             TokenType::Add | TokenType::Sub | TokenType::Not => self.expr_unary(next),
             TokenType::ParenLeft => self.expr_grouping(),
+            TokenType::If => self.expr_if(),
             _ => todo!("unexpected token in expression: {:?}", next),
         };
 
@@ -293,6 +275,24 @@ impl Parser {
         }
     }
 
+    fn expr_if(&mut self) -> Expr {
+        self.consume(&TokenType::ParenLeft);
+        let condition = Rc::new(self.expr());
+        self.consume(&TokenType::ParenRight);
+        let if_branch = Rc::new(self.stmt());
+        let else_branch = if *self.peek().get_type() == TokenType::Else {
+            self.consume(&TokenType::Else);
+            Some(Rc::new(self.stmt()))
+        } else {
+            None
+        };
+        Expr::If {
+            condition,
+            if_branch,
+            else_branch,
+        }
+    }
+
     fn prefix_binding_power(operator: &TokenType) -> u8 {
         match operator {
             TokenType::Add | TokenType::Sub => 6,
@@ -307,13 +307,13 @@ impl Parser {
             | TokenType::SetSub
             | TokenType::SetMul
             | TokenType::SetDiv => Some((1, 2)),
+            TokenType::And | TokenType::Or | TokenType::Xor => Some((3, 4)),
             TokenType::Low
             | TokenType::Leq
             | TokenType::Eq
             | TokenType::Gre
             | TokenType::Geq
-            | TokenType::Neq => Some((3, 4)),
-            TokenType::And | TokenType::Or | TokenType::Xor => Some((5, 6)),
+            | TokenType::Neq => Some((5, 6)),
             TokenType::Add | TokenType::Sub => Some((7, 8)),
             TokenType::Mul | TokenType::Div => Some((9, 10)),
             TokenType::Dot => Some((12, 11)),
