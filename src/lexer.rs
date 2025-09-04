@@ -125,125 +125,121 @@ impl Lexer<'_> {
     }
 
     fn scan_token(&mut self) {
-        match self.advance() {
+        let token_type = match self.advance() {
             Some(c) => match c {
-                '(' => self.add_token(TokenType::ParenLeft),
-                ')' => self.add_token(TokenType::ParenRight),
-                '{' => self.add_token(TokenType::BraceLeft),
-                '}' => self.add_token(TokenType::BraceRight),
-                '[' => self.add_token(TokenType::BracketLeft),
-                ']' => self.add_token(TokenType::BracketRight),
-                ',' => self.add_token(TokenType::Comma),
-                '.' => self.add_token(TokenType::Dot),
-                ':' => self.add_token(TokenType::Colon),
+                '(' => TokenType::ParenLeft,
+                ')' => TokenType::ParenRight,
+                '{' => TokenType::BraceLeft,
+                '}' => TokenType::BraceRight,
+                '[' => TokenType::BracketLeft,
+                ']' => TokenType::BracketRight,
+                ',' => TokenType::Comma,
+                '.' => TokenType::Dot,
+                ':' => TokenType::Colon,
                 '+' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::SetAdd
                     } else {
                         TokenType::Add
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '-' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::SetSub
                     } else {
                         TokenType::Sub
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '*' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::SetMul
                     } else {
                         TokenType::Mul
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '/' => {
                     if self.matchc('/') {
-                        while *self.peek().unwrap() != '\n' && !self.is_at_end() {
+                        while !self.is_at_end() && *self.peek().expect("unexpected eof") != '\n' {
                             self.advance();
                         }
+                        return self.scan_token();
                     } else {
-                        let token_type = if self.matchc('=') {
+                        if self.matchc('=') {
                             TokenType::SetDiv
                         } else {
                             TokenType::Div
-                        };
-                        self.add_token(token_type);
+                        }
                     }
                 }
                 '&' => {
                     if self.matchc('&') {
-                        self.add_token(TokenType::And);
+                        TokenType::And
                     } else {
                         panic!("Unexpected character.");
                     }
                 }
                 '|' => {
-                    let token_type = if self.matchc('|') {
+                    if self.matchc('|') {
                         TokenType::Or
                     } else {
                         TokenType::Xor
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '=' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::Eq
                     } else {
                         TokenType::Set
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '!' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::Neq
                     } else {
                         TokenType::Not
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '>' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::Geq
                     } else {
                         TokenType::Gre
-                    };
-                    self.add_token(token_type);
+                    }
                 }
                 '<' => {
-                    let token_type = if self.matchc('=') {
+                    if self.matchc('=') {
                         TokenType::Leq
                     } else {
                         TokenType::Low
-                    };
-                    self.add_token(token_type);
+                    }
                 }
-                ' ' | '\r' | '\t' => {}
+                ' ' | '\r' | '\t' => {
+                    return self.scan_token();
+                }
                 '\n' => {
                     self.line += 1;
                     self.column = 0;
+                    return self.scan_token();
                 }
                 '"' => self.string(),
                 _ => {
                     if Lexer::is_digit(c) {
-                        self.number(c);
+                        self.number(c)
                     } else if Lexer::is_alpha(c) {
-                        self.identifier(c);
+                        self.identifier(c)
                     } else {
                         panic!("Unexpected character '{}'.", c)
                     }
                 }
             },
-            _ => {}
-        }
+            _ => TokenType::Eof,
+        };
+        self.add_token(token_type);
     }
 
-    fn identifier(&mut self, c: char) {
+    fn identifier(&mut self, c: char) -> TokenType {
         let mut text = String::from(c);
-        while Lexer::is_alpha_numeric(*self.peek().unwrap()) {
+        while !self.is_at_end() && Lexer::is_alpha_numeric(*self.peek().expect("unexpected eof")) {
             match self.advance() {
                 Some(c) => {
                     text.push(c);
@@ -252,7 +248,7 @@ impl Lexer<'_> {
             };
         }
 
-        let token_type = match text.as_str() {
+        match text.as_str() {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
             "fn" => TokenType::Function,
@@ -268,14 +264,12 @@ impl Lexer<'_> {
             "true" => TokenType::Bool(true),
             "false" => TokenType::Bool(false),
             _ => TokenType::Identifier(text),
-        };
-
-        self.add_token(token_type);
+        }
     }
 
-    fn number(&mut self, c: char) {
+    fn number(&mut self, c: char) -> TokenType {
         let mut text = String::from(c);
-        while !self.is_at_end() && Lexer::is_digit(*self.peek().unwrap()) {
+        while !self.is_at_end() && Lexer::is_digit(*self.peek().expect("unexpected eof")) {
             match self.advance() {
                 Some(c) => {
                     text.push(c);
@@ -284,12 +278,12 @@ impl Lexer<'_> {
             }
         }
 
-        self.add_token(TokenType::Number(text.parse().unwrap()));
+        TokenType::Number(text.parse().unwrap())
     }
 
-    fn string(&mut self) {
+    fn string(&mut self) -> TokenType {
         let mut text = String::new();
-        while !self.is_at_end() && *self.peek().unwrap() != '"' {
+        while *self.peek().expect("got eof in unterminated string") != '"' {
             match self.advance() {
                 Some(c) => {
                     if c == '\n' {
@@ -301,14 +295,10 @@ impl Lexer<'_> {
             }
         }
 
-        if self.is_at_end() {
-            panic!("Unterminated string.");
-        }
-
         // The enclosing ".
         self.advance();
 
-        self.add_token(TokenType::String(text));
+        TokenType::String(text)
     }
 
     fn matchc(&mut self, c: char) -> bool {
