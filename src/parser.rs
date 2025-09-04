@@ -129,7 +129,7 @@ impl Parser {
                 Stmt::Break
             }
             TokenType::While => self.stmt_while(),
-            _ => Stmt::Expr(self.expr()),
+            _ => Stmt::ExprStmt(self.expr()),
         }
     }
 
