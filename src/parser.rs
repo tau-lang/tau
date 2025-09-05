@@ -258,11 +258,20 @@ impl Parser {
 
     fn expr_binary(&mut self, lhs: Expr, bp: u8) -> Expr {
         let next = self.advance();
-        let rhs = self.expr_bp(bp);
-        Expr::Binary {
-            left: Rc::new(lhs),
-            operator: next,
-            right: Rc::new(rhs),
+        if *next.get_type() == TokenType::Dot {
+            let rhs = self.advance();
+            assert!(rhs.get_type().is_identifer());
+            Expr::Get {
+                left: Rc::new(lhs),
+                right: rhs,
+            }
+        } else {
+            let rhs = self.expr_bp(bp);
+            Expr::Binary {
+                left: Rc::new(lhs),
+                operator: next,
+                right: Rc::new(rhs),
+            }
         }
     }
 

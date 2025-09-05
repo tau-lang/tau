@@ -15,6 +15,10 @@ pub enum Expr {
         operator: Token,
         right: Rc<Expr>,
     },
+    Get {
+        left: Rc<Expr>,
+        right: Token,
+    },
     Index {
         // object[index]
         object: Rc<Expr>,
@@ -47,6 +51,7 @@ pub trait ExprVisitor<'a, T> {
                 operator,
                 right,
             } => self.visit_binary(left, operator, right),
+            Expr::Get { left, right } => self.visit_get(left, right),
             Expr::Index { object, index } => self.visit_index(object, index),
             Expr::Call { callee, arguments } => self.visit_call(callee, arguments),
             Expr::Create {
@@ -66,6 +71,8 @@ pub trait ExprVisitor<'a, T> {
     fn visit_unary(&mut self, operator: &'a Token, right: &'a Rc<Expr>) -> T;
 
     fn visit_binary(&mut self, left: &'a Rc<Expr>, operator: &'a Token, right: &'a Rc<Expr>) -> T;
+
+    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &'a Token) -> T;
 
     fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>) -> T;
 
