@@ -1,22 +1,22 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::ast::{Decl, DeclVisitor, Expr, Stmt};
 use crate::lexer::Token;
-use crate::ast::{Decl, DeclVisitor, Stmt, Expr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDef<'a> {
     Struct {
         name: &'a str,
-        members: HashMap<&'a str, Rc<TypeDef<'a>>>
+        members: HashMap<&'a str, Rc<TypeDef<'a>>>,
     },
     Function {
         name: &'a str,
         parameters: HashMap<&'a str, Rc<TypeDef<'a>>>,
-        return_type: Rc<TypeDef<'a>>
+        return_type: Rc<TypeDef<'a>>,
     },
     Native(&'static str),
-    Lazy(&'a str)
+    Lazy(&'a str),
 }
 
 impl TypeDef<'_> {
@@ -24,7 +24,7 @@ impl TypeDef<'_> {
         if let TypeDef::Native(type_name) = *self {
             match type_name {
                 "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => true,
-                _ => false   
+                _ => false,
             }
         } else {
             false
@@ -35,7 +35,7 @@ impl TypeDef<'_> {
         if let TypeDef::Native(type_name) = *self {
             match type_name {
                 "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" => true,
-                _ => false   
+                _ => false,
             }
         } else {
             false
@@ -73,9 +73,9 @@ impl<'a> Header<'a> {
                 ("bool", Rc::new(TypeDef::Native("bool"))),
                 ("char", Rc::new(TypeDef::Native("char"))),
                 ("str", Rc::new(TypeDef::Native("str"))),
-                ("void", Rc::new(TypeDef:: Native("void")))
+                ("void", Rc::new(TypeDef::Native("void"))),
             ]),
-            fields: HashMap::new()
+            fields: HashMap::new(),
         }
     }
 
@@ -86,16 +86,30 @@ impl<'a> Header<'a> {
         self
     }
 
-    pub fn analysed(self) -> (HashMap<&'a str, Rc<TypeDef<'a>>>, HashMap<&'a str, Rc<TypeDef<'a>>>) {
+    pub fn analysed(
+        self,
+    ) -> (
+        HashMap<&'a str, Rc<TypeDef<'a>>>,
+        HashMap<&'a str, Rc<TypeDef<'a>>>,
+    ) {
         (self.types, self.fields)
     }
 
-    fn make_function(&self, name: &'a Token, return_type: &'a Token, params: &'a Vec<(Token, Token)>) -> Rc<TypeDef<'a>> {
+    fn make_function(
+        &self,
+        name: &'a Token,
+        return_type: &'a Token,
+        params: &'a Vec<(Token, Token)>,
+    ) -> Rc<TypeDef<'a>> {
         let mut parameters = HashMap::new();
         for (param_name, param_type) in params {
             parameters.insert(param_name.identifier(), self.get_type(param_type));
         }
-        Rc::new(TypeDef::Function { name: name.identifier(), parameters, return_type: self.get_type(return_type) })
+        Rc::new(TypeDef::Function {
+            name: name.identifier(),
+            parameters,
+            return_type: self.get_type(return_type),
+        })
     }
 
     fn get_type(&self, name: &'a Token) -> Rc<TypeDef<'a>> {
@@ -105,7 +119,6 @@ impl<'a> Header<'a> {
         } else {
             Rc::new(TypeDef::Lazy(ref_name))
         }
-        
     }
 }
 
@@ -127,12 +140,27 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
             members.insert(field_name.identifier(), self.get_type(field_type));
         }
         for decl in methods {
-            if let Decl::Function { name, return_type, params, .. } = &**decl {
-                members.insert(name.identifier(), self.make_function(name, return_type, params));
+            if let Decl::Function {
+                name,
+                return_type,
+                params,
+                ..
+            } = &**decl
+            {
+                members.insert(
+                    name.identifier(),
+                    self.make_function(name, return_type, params),
+                );
             }
         }
 
-        self.types.insert(struct_name, Rc::new(TypeDef::Struct { name: struct_name, members }));
+        self.types.insert(
+            struct_name,
+            Rc::new(TypeDef::Struct {
+                name: struct_name,
+                members,
+            }),
+        );
     }
 
     fn visit_function(
@@ -142,10 +170,14 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
         params: &'a Vec<(Token, Token)>,
         _: &Stmt,
     ) {
-        self.fields.insert(name.identifier(), self.make_function(name, return_type, params));
+        self.fields.insert(
+            name.identifier(),
+            self.make_function(name, return_type, params),
+        );
     }
 
     fn visit_const(&mut self, name: &'a Token, var_type: &'a Token, _: &Expr) {
-        self.fields.insert(name.identifier(), self.get_type(var_type));
+        self.fields
+            .insert(name.identifier(), self.get_type(var_type));
     }
 }

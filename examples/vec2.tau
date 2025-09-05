@@ -1,5 +1,11 @@
 import math
 
+fn sqrt(v: f64): f64 {
+    // We need this dummy function because imports
+    // are currently not supported
+    return v
+}
+
 struct vec2 {
     x: f64,
     y: f64
