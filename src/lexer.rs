@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct Token {
     token_type: TokenType,
@@ -21,6 +21,14 @@ impl Token {
 
     pub fn get_type(&self) -> &TokenType {
         &self.token_type
+    }
+
+    pub fn identifier(&self) -> &str {
+        match self.get_type() {
+            TokenType::Identifier(name) => name,
+            TokenType::VSelf => "self",
+            _ => panic!("expected identifier"),
+        }
     }
 }
 

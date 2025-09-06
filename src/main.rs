@@ -1,9 +1,13 @@
-use crate::{lexer::Lexer, parser::Parser};
+use crate::{
+    ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
+};
 use std::{env, fs, io};
 
 mod ast;
+mod header;
 mod lexer;
 mod parser;
+mod resolution;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -15,7 +19,10 @@ fn main() {
                 let tokens = lexer.scan();
                 if tokens.len() > 1 {
                     let mut parser = Parser::new(tokens);
-                    println!("{:#?}", parser.stmt());
+                    let ast = parser.stmt();
+                    let mut resolution = Resolution::new(Header::new());
+                    resolution.visit_stmt(&ast);
+                    println!("{:#?}", resolution);
                     buffer.clear();
                 } else {
                     break;
@@ -26,7 +33,10 @@ fn main() {
             let content = fs::read_to_string(args.get(1).unwrap()).expect("Expected to open file");
             let lexer = Lexer::new(content.chars());
             let parser = Parser::new(lexer.scan());
-            println!("{:#?}", parser.parse());
+            let ast = parser.parse();
+            let header = Header::new().headers(&ast);
+            let resolution = Resolution::new(header);
+            println!("{:#?}", resolution.resolve(&ast).analysed());
         }
         _ => println!("usage: {:?} [file]", args.first().unwrap()),
     }
@@ -34,7 +44,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::Lexer, parser::Parser};
+    use crate::{
+        ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
+    };
     use std::fs;
 
     #[test]
@@ -58,5 +70,25 @@ mod tests {
         let lexer = Lexer::new(content.chars());
         let mut parser = Parser::new(lexer.scan());
         println!("{:?}", parser.stmt());
+    }
+
+    #[test]
+    fn header_file() {
+        let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
+        let lexer = Lexer::new(content.chars());
+        let parser = Parser::new(lexer.scan());
+        let ast = parser.parse();
+        let header = Header::new();
+        println!("{:?}", header.headers(&ast).analysed());
+    }
+
+    #[test]
+    fn resolve_stmt() {
+        let content = "{ let a = 2 if (a < 2) break }";
+        let lexer = Lexer::new(content.chars());
+        let mut parser = Parser::new(lexer.scan());
+        let ast = parser.stmt();
+        let mut resolution = Resolution::new(Header::new());
+        println!("{:#?}", resolution.visit_stmt(&ast));
     }
 }
