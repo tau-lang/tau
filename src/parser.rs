@@ -48,6 +48,7 @@ impl Parser {
     fn decl_function(&mut self) -> Decl {
         let name = self.advance();
         assert!(name.get_type().is_identifer(), "{:?}", name);
+
         self.consume(&TokenType::ParenLeft);
         let mut params = Vec::new();
         while *self.peek().get_type() != TokenType::ParenRight {
@@ -57,10 +58,18 @@ impl Parser {
             }
         }
         self.consume(&TokenType::ParenRight);
+
         self.consume(&TokenType::Colon);
         let return_type = self.advance();
         assert!(name.get_type().is_identifer(), "{:?}", name);
-        let body = self.stmt();
+
+        self.consume(&TokenType::BraceLeft);
+        let mut body = Vec::new();
+        while *self.peek().get_type() != TokenType::BraceRight {
+            body.push(self.stmt());
+        }
+        self.consume(&TokenType::BraceRight);
+
         Decl::Function {
             name,
             return_type,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use crate::ast::{Decl, DeclVisitor, Expr, Stmt};
@@ -12,28 +13,106 @@ pub enum TypeDef<'a> {
     },
     Function {
         name: &'a str,
-        parameters: HashMap<&'a str, Rc<TypeDef<'a>>>,
+        parameters: Vec<(&'a str, Rc<TypeDef<'a>>)>,
         return_type: Rc<TypeDef<'a>>,
+    },
+    Number {
+        name: &'static str,
+        size: u8,
+        float: bool,
+        signed: bool,
     },
     Native(&'static str),
     Lazy(&'a str),
 }
 
-impl TypeDef<'_> {
+impl<'a> TypeDef<'a> {
+    fn make_number(name: &'static str, size: u8, float: bool, signed: bool) -> TypeDef<'a> {
+        Self::Number {
+            name,
+            size,
+            float,
+            signed,
+        }
+    }
+
+    pub fn is_castable_to(&self, to: &Self) -> bool {
+        match self {
+            TypeDef::Number {
+                name: _,
+                size,
+                float,
+                signed: _,
+            } => {
+                let (this_size, this_float) = (size, float);
+                if let TypeDef::Number {
+                    name: _,
+                    size,
+                    float,
+                    signed: _,
+                } = to
+                {
+                    if *this_float {
+                        return *float && this_size <= size;
+                    } else {
+                        return this_size <= size;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            TypeDef::Function {
+                name,
+                parameters,
+                return_type,
+            } => {
+                // TODO: check if you can cast the function
+                return false;
+            }
+            TypeDef::Struct { name, members: _ } => {
+                let this_name = name;
+                if let TypeDef::Struct { name, members: _ } = to {
+                    return this_name == name;
+                } else {
+                    return false;
+                }
+            }
+            Self::Native(this_name) => {
+                if let Self::Native(name) = to {
+                    return this_name == name;
+                } else {
+                    return false;
+                }
+            }
+            _ => {
+                panic!("tried to typecheck a lazy type that was not dereferenced yet")
+            }
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
-        if let TypeDef::Native(type_name) = *self {
-            return matches!(
-                type_name,
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
-            );
+        if let TypeDef::Number {
+            name: _,
+            size: _,
+            float,
+            signed: _,
+        } = *self
+        {
+            return float;
         }
         false
     }
 
     pub fn is_number(&self) -> bool {
-        if let TypeDef::Native(type_name) = *self {
+        if let TypeDef::Number {
+            name,
+            size: _,
+            float: _,
+            signed: _,
+        } = *self
+        {
             return matches!(
-                type_name,
+                name,
                 "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64"
             );
         }
@@ -41,11 +120,33 @@ impl TypeDef<'_> {
     }
 
     pub fn is_bool(&self) -> bool {
-        if let TypeDef::Native(type_name) = *self {
-            type_name == "bool"
+        if let TypeDef::Native(name) = *self {
+            name == "bool"
         } else {
             false
         }
+    }
+}
+
+impl Display for TypeDef<'_> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let name = match self {
+            Self::Struct { name, members: _ } => name,
+            Self::Function {
+                name,
+                parameters: _,
+                return_type: _,
+            } => name,
+            Self::Number {
+                name,
+                size: _,
+                float: _,
+                signed: _,
+            } => name,
+            Self::Native(name) => name,
+            Self::Lazy(name) => name,
+        };
+        formatter.write_str(name)
     }
 }
 
@@ -58,16 +159,16 @@ impl<'a> Header<'a> {
     pub fn new() -> Header<'a> {
         Header {
             types: HashMap::from([
-                ("u8", Rc::new(TypeDef::Native("u8"))),
-                ("u16", Rc::new(TypeDef::Native("u16"))),
-                ("u32", Rc::new(TypeDef::Native("u32"))),
-                ("u64", Rc::new(TypeDef::Native("u64"))),
-                ("i8", Rc::new(TypeDef::Native("i8"))),
-                ("i16", Rc::new(TypeDef::Native("i16"))),
-                ("i32", Rc::new(TypeDef::Native("i32"))),
-                ("i64", Rc::new(TypeDef::Native("i64"))),
-                ("f32", Rc::new(TypeDef::Native("f32"))),
-                ("f64", Rc::new(TypeDef::Native("f64"))),
+                ("u8", Rc::new(TypeDef::make_number("u8", 1, false, false))),
+                ("u16", Rc::new(TypeDef::make_number("u16", 2, false, false))),
+                ("u32", Rc::new(TypeDef::make_number("u32", 4, false, false))),
+                ("u64", Rc::new(TypeDef::make_number("u64", 8, false, false))),
+                ("i8", Rc::new(TypeDef::make_number("i8", 1, false, true))),
+                ("i16", Rc::new(TypeDef::make_number("i16", 2, false, true))),
+                ("i32", Rc::new(TypeDef::make_number("i32", 4, false, true))),
+                ("i64", Rc::new(TypeDef::make_number("i64", 8, false, true))),
+                ("f32", Rc::new(TypeDef::make_number("f32", 4, true, true))),
+                ("f64", Rc::new(TypeDef::make_number("f64", 8, true, true))),
                 ("bool", Rc::new(TypeDef::Native("bool"))),
                 ("char", Rc::new(TypeDef::Native("char"))),
                 ("str", Rc::new(TypeDef::Native("str"))),
@@ -99,9 +200,9 @@ impl<'a> Header<'a> {
         return_type: &'a Token,
         params: &'a [(Token, Token)],
     ) -> Rc<TypeDef<'a>> {
-        let mut parameters = HashMap::new();
+        let mut parameters = Vec::new();
         for (param_name, param_type) in params {
-            parameters.insert(param_name.identifier(), self.get_type(param_type));
+            parameters.push((param_name.identifier(), self.get_type(param_type)));
         }
         Rc::new(TypeDef::Function {
             name: name.identifier(),
@@ -166,7 +267,7 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
         name: &'a Token,
         return_type: &'a Token,
         params: &'a [(Token, Token)],
-        _: &Stmt,
+        _: &[Stmt],
     ) {
         self.fields.insert(
             name.identifier(),

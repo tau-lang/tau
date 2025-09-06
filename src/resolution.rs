@@ -157,8 +157,12 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             | TokenType::SetDiv => {
                 assert!(l.is_number());
                 assert!(r.is_number());
-                // TODO: choose larger number type out of left and right
-                r
+                if l.is_castable_to(&r) {
+                    return r;
+                } else if r.is_castable_to(&l) {
+                    return l;
+                }
+                panic!("number types of left and right side do not match");
             }
             TokenType::And | TokenType::Or | TokenType::Xor => {
                 assert!(l.is_bool());
@@ -197,20 +201,26 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
         let l = self.visit_expr(object);
         let r = self.visit_expr(index);
         assert!(r.is_integer());
-        todo!()
+        todo!("arrays are currently not implemented")
     }
 
     fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Rc<TypeDef<'a>> {
         let callee_type = self.visit_expr(callee);
         if let TypeDef::Function {
-            name,
+            name: _,
             parameters,
             return_type,
         } = &*callee_type
         {
-            for argument in arguments {
-                // TODO: check argument type
-                self.visit_expr(argument);
+            for (argument, (para_name, para_type)) in arguments.iter().zip(parameters) {
+                let arg_type = self.visit_expr(argument);
+                assert!(
+                    arg_type.is_castable_to(para_type),
+                    "argument type '{}' supplied to function does not match parameter '{}' of type '{}'",
+                    arg_type,
+                    para_name,
+                    para_type
+                )
             }
             return_type.clone()
         } else {
@@ -368,19 +378,26 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
         _: &'a Token,
         return_type: &'a Token,
         params: &'a [(Token, Token)],
-        body: &'a Stmt,
+        body: &'a [Stmt],
     ) {
         assert!(self.return_type.is_none());
         self.begin_scope();
         for (param_name, param_type) in params {
             self.declare_variable(param_name, self.get_type(param_type.identifier()));
         }
-        self.visit_stmt(body);
-        assert_eq!(
-            self.get_type(return_type.identifier()),
-            self.return_type
-                .clone()
-                .unwrap_or_else(|| { self.get_type("void") })
+        for stmt in body {
+            self.visit_stmt(stmt);
+        }
+        let expected = return_type.identifier();
+        let real = self
+            .return_type
+            .clone()
+            .unwrap_or_else(|| self.get_type("void"));
+        assert!(
+            real.is_castable_to(&self.get_type(expected)),
+            "could not cast {} to {}",
+            real,
+            expected
         );
         self.return_type = None;
         self.end_scope();

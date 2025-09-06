@@ -2,7 +2,6 @@ use crate::lexer::Token;
 use std::rc::Rc;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum Expr {
     Unary {
         // -right
@@ -159,7 +158,6 @@ pub trait StmtVisitor<'a, T> {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum Decl {
     Import(Token),
     Struct {
@@ -171,7 +169,7 @@ pub enum Decl {
         name: Token,
         return_type: Token,
         params: Vec<(Token, Token)>,
-        body: Stmt,
+        body: Vec<Stmt>,
     },
     Const {
         name: Token,
@@ -217,7 +215,7 @@ pub trait DeclVisitor<'a, T> {
         name: &'a Token,
         return_type: &'a Token,
         params: &'a [(Token, Token)],
-        body: &'a Stmt,
+        body: &'a [Stmt],
     ) -> T;
 
     fn visit_const(&mut self, name: &'a Token, var_type: &'a Token, initializer: &'a Expr) -> T;
