@@ -38,14 +38,14 @@ impl<'a> TypeDef<'a> {
 
     pub fn is_castable_to(&self, to: &Self) -> bool {
         match self {
-            TypeDef::Number {
+            Self::Number {
                 name: _,
                 size,
                 float,
                 signed: _,
             } => {
                 let (this_size, this_float) = (size, float);
-                if let TypeDef::Number {
+                if let Self::Number {
                     name: _,
                     size,
                     float,
@@ -61,7 +61,7 @@ impl<'a> TypeDef<'a> {
                     return false;
                 }
             }
-            TypeDef::Function {
+            Self::Function {
                 name,
                 parameters,
                 return_type,
@@ -69,7 +69,7 @@ impl<'a> TypeDef<'a> {
                 // TODO: check if you can cast the function
                 return false;
             }
-            TypeDef::Struct { name, members: _ } => {
+            Self::Struct { name, members: _ } => {
                 let this_name = name;
                 if let TypeDef::Struct { name, members: _ } = to {
                     return this_name == name;
@@ -85,7 +85,10 @@ impl<'a> TypeDef<'a> {
                 }
             }
             _ => {
-                panic!("tried to typecheck a lazy type that was not dereferenced yet")
+                panic!(
+                    "tried to typecheck the lazy type '{}' that was not dereferenced yet",
+                    self
+                )
             }
         }
     }
@@ -197,17 +200,27 @@ impl<'a> Header<'a> {
     fn make_function(
         &self,
         name: &'a Token,
-        return_type: &'a Token,
+        return_type: &'a Option<Token>,
         params: &'a [(Token, Token)],
     ) -> Rc<TypeDef<'a>> {
         let mut parameters = Vec::new();
         for (param_name, param_type) in params {
             parameters.push((param_name.identifier(), self.get_type(param_type)));
         }
+
+        let return_type = if let Some(type_name) = return_type {
+            self.get_type(type_name)
+        } else {
+            self.types
+                .get("void")
+                .expect("expected void type exists")
+                .clone()
+        };
+
         Rc::new(TypeDef::Function {
             name: name.identifier(),
             parameters,
-            return_type: self.get_type(return_type),
+            return_type,
         })
     }
 
@@ -265,7 +278,7 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
     fn visit_function(
         &mut self,
         name: &'a Token,
-        return_type: &'a Token,
+        return_type: &'a Option<Token>,
         params: &'a [(Token, Token)],
         _: &[Stmt],
     ) {

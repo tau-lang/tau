@@ -89,6 +89,10 @@ impl<'a> Resolution<'a> {
                 .as_str(),
             )
             .clone();
+        self.get_ref_type(ref_type)
+    }
+
+    fn get_ref_type(&self, ref_type: Rc<TypeDef<'a>>) -> Rc<TypeDef<'a>> {
         if let TypeDef::Lazy(lazy_name) = *ref_type {
             self.get_type(lazy_name)
         } else {
@@ -215,14 +219,14 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             for (argument, (para_name, para_type)) in arguments.iter().zip(parameters) {
                 let arg_type = self.visit_expr(argument);
                 assert!(
-                    arg_type.is_castable_to(para_type),
+                    arg_type.is_castable_to(&*self.get_ref_type(para_type.clone())),
                     "argument type '{}' supplied to function does not match parameter '{}' of type '{}'",
                     arg_type,
                     para_name,
                     para_type
                 )
             }
-            return_type.clone()
+            self.get_ref_type(return_type.clone())
         } else {
             panic!("expected to call function")
         }
@@ -308,9 +312,23 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
         None
     }
 
-    fn visit_let(&mut self, name: &'a Token, initializer: &'a Expr) -> Option<Rc<TypeDef<'a>>> {
-        let var_type = self.visit_expr(initializer);
-        self.declare_variable(name, var_type);
+    fn visit_let(
+        &mut self,
+        name: &'a Token,
+        var_type: &'a Option<Token>,
+        initializer: &'a Expr,
+    ) -> Option<Rc<TypeDef<'a>>> {
+        let real_type = self.visit_expr(initializer);
+        if let Some(expected_type) = &*var_type {
+            let ref_type = self.get_type(expected_type.identifier());
+            if real_type.is_castable_to(&ref_type) {
+                self.declare_variable(name, ref_type);
+            } else {
+                panic!();
+            }
+        } else {
+            self.declare_variable(name, real_type);
+        }
         None
     }
 
@@ -376,7 +394,7 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
     fn visit_function(
         &mut self,
         _: &'a Token,
-        return_type: &'a Token,
+        return_type: &'a Option<Token>,
         params: &'a [(Token, Token)],
         body: &'a [Stmt],
     ) {
@@ -388,11 +406,16 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
         for stmt in body {
             self.visit_stmt(stmt);
         }
-        let expected = return_type.identifier();
-        let real = self
-            .return_type
-            .clone()
-            .unwrap_or_else(|| self.get_type("void"));
+        let expected = if let Some(type_name) = return_type {
+            type_name.identifier()
+        } else {
+            "void"
+        };
+        let real = self.get_ref_type(
+            self.return_type
+                .clone()
+                .unwrap_or_else(|| self.get_type("void")),
+        );
         assert!(
             real.is_castable_to(&self.get_type(expected)),
             "could not cast {} to {}",

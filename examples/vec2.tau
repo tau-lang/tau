@@ -46,3 +46,7 @@ fn new(x: f64, y: f64): vec2 {
     let created = vec2 { x=x, y=y }
     return created
 }
+
+fn main() {
+    let a: vec2 = new(3, 4).add(4, -2)
+}

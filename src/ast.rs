@@ -99,6 +99,7 @@ pub enum Stmt {
     },
     Let {
         name: Token,
+        var_type: Option<Token>,
         initializer: Expr,
     },
     Return {
@@ -122,7 +123,11 @@ pub trait StmtVisitor<'a, T> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) -> T {
         match stmt {
             Stmt::Block { statements } => self.visit_block(statements),
-            Stmt::Let { name, initializer } => self.visit_let(name, initializer),
+            Stmt::Let {
+                name,
+                var_type,
+                initializer,
+            } => self.visit_let(name, var_type, initializer),
             Stmt::Return { value } => self.visit_return(value),
             Stmt::Break => self.visit_break(),
             Stmt::While { condition, body } => self.visit_while(condition, body),
@@ -138,7 +143,12 @@ pub trait StmtVisitor<'a, T> {
 
     fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> T;
 
-    fn visit_let(&mut self, name: &'a Token, initializer: &'a Expr) -> T;
+    fn visit_let(
+        &mut self,
+        name: &'a Token,
+        var_type: &'a Option<Token>,
+        initializer: &'a Expr,
+    ) -> T;
 
     fn visit_return(&mut self, value: &'a Expr) -> T;
 
@@ -167,7 +177,7 @@ pub enum Decl {
     },
     Function {
         name: Token,
-        return_type: Token,
+        return_type: Option<Token>,
         params: Vec<(Token, Token)>,
         body: Vec<Stmt>,
     },
@@ -213,7 +223,7 @@ pub trait DeclVisitor<'a, T> {
     fn visit_function(
         &mut self,
         name: &'a Token,
-        return_type: &'a Token,
+        return_type: &'a Option<Token>,
         params: &'a [(Token, Token)],
         body: &'a [Stmt],
     ) -> T;

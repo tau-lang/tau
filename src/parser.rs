@@ -59,9 +59,14 @@ impl Parser {
         }
         self.consume(&TokenType::ParenRight);
 
-        self.consume(&TokenType::Colon);
-        let return_type = self.advance();
-        assert!(name.get_type().is_identifer(), "{:?}", name);
+        let return_type = if *self.peek().get_type() != TokenType::BraceLeft {
+            self.consume(&TokenType::Colon);
+            let type_name = self.advance();
+            assert!(type_name.get_type().is_identifer());
+            Some(type_name)
+        } else {
+            None
+        };
 
         self.consume(&TokenType::BraceLeft);
         let mut body = Vec::new();
@@ -156,9 +161,21 @@ impl Parser {
         self.advance();
         let name = self.advance();
         assert!(name.get_type().is_identifer());
+        let var_type = if *self.peek().get_type() != TokenType::Set {
+            self.consume(&TokenType::Colon);
+            let type_name = self.advance();
+            assert!(type_name.get_type().is_identifer());
+            Some(type_name)
+        } else {
+            None
+        };
         self.consume(&TokenType::Set);
         let initializer = self.expr();
-        Stmt::Let { name, initializer }
+        Stmt::Let {
+            name,
+            var_type,
+            initializer,
+        }
     }
 
     fn stmt_while(&mut self) -> Stmt {
