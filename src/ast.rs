@@ -76,9 +76,9 @@ pub trait ExprVisitor<'a, T> {
 
     fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>) -> T;
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a Vec<Rc<Expr>>) -> T;
+    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> T;
 
-    fn visit_create(&mut self, struct_name: &'a Token, fields: &'a Vec<(Token, Rc<Expr>)>) -> T;
+    fn visit_create(&mut self, struct_name: &'a Token, fields: &'a [(Token, Rc<Expr>)]) -> T;
 
     fn visit_if(
         &mut self,
@@ -137,7 +137,7 @@ pub trait StmtVisitor<'a, T> {
         }
     }
 
-    fn visit_block(&mut self, statements: &'a Vec<Rc<Stmt>>) -> T;
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> T;
 
     fn visit_let(&mut self, name: &'a Token, initializer: &'a Expr) -> T;
 
@@ -208,15 +208,15 @@ pub trait DeclVisitor<'a, T> {
     fn visit_struct(
         &mut self,
         name: &'a Token,
-        fields: &'a Vec<(Token, Token)>,
-        methods: &'a Vec<Rc<Decl>>,
+        fields: &'a [(Token, Token)],
+        methods: &'a [Rc<Decl>],
     ) -> T;
 
     fn visit_function(
         &mut self,
         name: &'a Token,
         return_type: &'a Token,
-        params: &'a Vec<(Token, Token)>,
+        params: &'a [(Token, Token)],
         body: &'a Stmt,
     ) -> T;
 

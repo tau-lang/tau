@@ -200,11 +200,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
         todo!()
     }
 
-    fn visit_call(
-        &mut self,
-        callee: &'a Rc<Expr>,
-        arguments: &'a Vec<Rc<Expr>>,
-    ) -> Rc<TypeDef<'a>> {
+    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Rc<TypeDef<'a>> {
         let callee_type = self.visit_expr(callee);
         if let TypeDef::Function {
             name,
@@ -225,7 +221,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
     fn visit_create(
         &mut self,
         struct_name: &'a Token,
-        fields: &'a Vec<(Token, Rc<Expr>)>,
+        fields: &'a [(Token, Rc<Expr>)],
     ) -> Rc<TypeDef<'a>> {
         let name = struct_name.identifier();
         let ref_type = if let Some(ref_type) = self.types.get(name) {
@@ -264,7 +260,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             }
         }
         if let Some(branch) = else_branch {
-            if let Some(_) = self.visit_stmt(branch) {
+            if self.visit_stmt(branch).is_some() {
                 panic!("non expressive if has a expressive else branch");
             }
         }
@@ -292,7 +288,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
 }
 
 impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
-    fn visit_block(&mut self, statements: &'a Vec<Rc<Stmt>>) -> Option<Rc<TypeDef<'a>>> {
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Option<Rc<TypeDef<'a>>> {
         self.begin_scope();
         for stmt in statements {
             assert!(self.return_type.is_none(), "function has already returned");
@@ -350,12 +346,7 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
 impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
     fn visit_import(&mut self, _: &Token) {}
 
-    fn visit_struct(
-        &mut self,
-        name: &'a Token,
-        _: &'a Vec<(Token, Token)>,
-        methods: &'a Vec<Rc<Decl>>,
-    ) {
+    fn visit_struct(&mut self, name: &'a Token, _: &'a [(Token, Token)], methods: &'a [Rc<Decl>]) {
         self.begin_scope();
         let struct_type = self
             .types
@@ -376,7 +367,7 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
         &mut self,
         _: &'a Token,
         return_type: &'a Token,
-        params: &'a Vec<(Token, Token)>,
+        params: &'a [(Token, Token)],
         body: &'a Stmt,
     ) {
         assert!(self.return_type.is_none());

@@ -45,11 +45,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::StmtVisitor,
-        header::{self, Header},
-        lexer::Lexer,
-        parser::Parser,
-        resolution::Resolution,
+        ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
     };
     use std::fs;
 

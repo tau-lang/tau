@@ -22,24 +22,22 @@ pub enum TypeDef<'a> {
 impl TypeDef<'_> {
     pub fn is_integer(&self) -> bool {
         if let TypeDef::Native(type_name) = *self {
-            match type_name {
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => true,
-                _ => false,
-            }
-        } else {
-            false
+            return matches!(
+                type_name,
+                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+            );
         }
+        false
     }
 
     pub fn is_number(&self) -> bool {
         if let TypeDef::Native(type_name) = *self {
-            match type_name {
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64" => true,
-                _ => false,
-            }
-        } else {
-            false
+            return matches!(
+                type_name,
+                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64"
+            );
         }
+        false
     }
 
     pub fn is_bool(&self) -> bool {
@@ -79,7 +77,7 @@ impl<'a> Header<'a> {
         }
     }
 
-    pub fn headers(mut self, declarations: &'a Vec<Decl>) -> Header<'a> {
+    pub fn headers(mut self, declarations: &'a [Decl]) -> Header<'a> {
         for declaration in declarations {
             self.visit_decl(declaration);
         }
@@ -99,7 +97,7 @@ impl<'a> Header<'a> {
         &self,
         name: &'a Token,
         return_type: &'a Token,
-        params: &'a Vec<(Token, Token)>,
+        params: &'a [(Token, Token)],
     ) -> Rc<TypeDef<'a>> {
         let mut parameters = HashMap::new();
         for (param_name, param_type) in params {
@@ -130,8 +128,8 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
     fn visit_struct(
         &mut self,
         name: &'a Token,
-        fields: &'a Vec<(Token, Token)>,
-        methods: &'a Vec<Rc<Decl>>,
+        fields: &'a [(Token, Token)],
+        methods: &'a [Rc<Decl>],
     ) {
         let struct_name = name.identifier();
 
@@ -167,7 +165,7 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
         &mut self,
         name: &'a Token,
         return_type: &'a Token,
-        params: &'a Vec<(Token, Token)>,
+        params: &'a [(Token, Token)],
         _: &Stmt,
     ) {
         self.fields.insert(
