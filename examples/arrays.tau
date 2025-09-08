@@ -1,0 +1,8 @@
+fn main() {
+    let a = u32[16] { 0, 0 }
+    let i = 0
+    while (i < 16) {
+        a[i] = i
+        i += 1
+    }
+}

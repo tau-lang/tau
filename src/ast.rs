@@ -28,7 +28,12 @@ pub enum Expr {
         callee: Rc<Expr>,
         arguments: Vec<Rc<Expr>>,
     },
-    Create {
+    CreateArray {
+        array_type: Token,
+        array_size: Option<Rc<Expr>>,
+        fields: Vec<Rc<Expr>>,
+    },
+    CreateStruct {
         struct_name: Token,
         fields: Vec<(Token, Rc<Expr>)>,
     },
@@ -53,10 +58,15 @@ pub trait ExprVisitor<'a, T> {
             Expr::Get { left, right } => self.visit_get(left, right),
             Expr::Index { object, index } => self.visit_index(object, index),
             Expr::Call { callee, arguments } => self.visit_call(callee, arguments),
-            Expr::Create {
+            Expr::CreateArray {
+                array_type,
+                array_size,
+                fields,
+            } => self.visit_create_array(array_type, array_size, fields),
+            Expr::CreateStruct {
                 struct_name,
                 fields,
-            } => self.visit_create(struct_name, fields),
+            } => self.visit_create_struct(struct_name, fields),
             Expr::If {
                 condition,
                 if_branch,
@@ -77,7 +87,15 @@ pub trait ExprVisitor<'a, T> {
 
     fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> T;
 
-    fn visit_create(&mut self, struct_name: &'a Token, fields: &'a [(Token, Rc<Expr>)]) -> T;
+    fn visit_create_array(
+        &mut self,
+        array_type: &'a Token,
+        array_size: &'a Option<Rc<Expr>>,
+        fields: &'a [Rc<Expr>],
+    ) -> T;
+
+    fn visit_create_struct(&mut self, struct_name: &'a Token, fields: &'a [(Token, Rc<Expr>)])
+    -> T;
 
     fn visit_if(
         &mut self,

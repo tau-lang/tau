@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+#[derive(Debug)]
 pub struct Parser {
     tokens: VecDeque<Token>,
     declarations: Vec<Decl>,
@@ -197,7 +198,26 @@ impl Parser {
             TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => Expr::Literal(next),
             TokenType::Identifier(_) => {
                 if *self.peek().get_type() == TokenType::BraceLeft {
-                    self.expr_create(next)
+                    self.expr_create_struct(next)
+                } else if *self.peek().get_type() == TokenType::BracketLeft {
+                    self.advance();
+                    // The code below is needed to check if we create a new array or want to index a field.
+                    if *self.peek().get_type() == TokenType::BracketRight {
+                        self.advance();
+                        dbg!("create array");
+                        self.expr_create_array(next, None)
+                    } else {
+                        let expr = Rc::new(self.expr());
+                        self.consume(&TokenType::BracketRight);
+                        if *self.peek().get_type() == TokenType::BraceLeft {
+                            self.expr_create_array(next, Some(expr))
+                        } else {
+                            Expr::Index {
+                                object: Rc::new(Expr::Variable(next)),
+                                index: expr,
+                            }
+                        }
+                    }
                 } else {
                     Expr::Variable(next)
                 }
@@ -301,7 +321,25 @@ impl Parser {
         }
     }
 
-    fn expr_create(&mut self, struct_name: Token) -> Expr {
+    fn expr_create_array(&mut self, array_type: Token, array_size: Option<Rc<Expr>>) -> Expr {
+        self.consume(&TokenType::BraceLeft);
+        let mut fields = Vec::new();
+        while *self.peek().get_type() != TokenType::BraceRight {
+            fields.push(Rc::new(self.expr()));
+            if *self.peek().get_type() != TokenType::BraceRight {
+                self.consume(&TokenType::Comma);
+            }
+        }
+        self.consume(&TokenType::BraceRight);
+
+        Expr::CreateArray {
+            array_type,
+            array_size,
+            fields,
+        }
+    }
+
+    fn expr_create_struct(&mut self, struct_name: Token) -> Expr {
         self.consume(&TokenType::BraceLeft);
         let mut fields = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
@@ -316,7 +354,7 @@ impl Parser {
             }
         }
         self.consume(&TokenType::BraceRight);
-        Expr::Create {
+        Expr::CreateStruct {
             struct_name,
             fields,
         }

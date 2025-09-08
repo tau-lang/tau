@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Result};
 use std::rc::Rc;
 
 use crate::ast::{Decl, DeclVisitor, Expr, Stmt};
@@ -12,10 +12,10 @@ pub enum TypeDef<'a> {
         members: HashMap<&'a str, Rc<TypeDef<'a>>>,
     },
     Function {
-        name: &'a str,
-        parameters: Vec<(&'a str, Rc<TypeDef<'a>>)>,
+        parameters: Vec<Rc<TypeDef<'a>>>,
         return_type: Rc<TypeDef<'a>>,
     },
+    Array(Rc<TypeDef<'a>>),
     Number {
         name: &'static str,
         size: u8,
@@ -62,12 +62,24 @@ impl<'a> TypeDef<'a> {
                 }
             }
             Self::Function {
-                name,
                 parameters,
                 return_type,
             } => {
-                // TODO: check if you can cast the function
-                return false;
+                let (this_para, this_return) = (parameters, return_type);
+                if let Self::Function {
+                    parameters,
+                    return_type,
+                } = to
+                {
+                    for (par_from, par_to) in this_para.iter().zip(parameters) {
+                        if !par_from.is_castable_to(par_to) {
+                            return false;
+                        }
+                    }
+                    return this_return.is_castable_to(return_type);
+                } else {
+                    return false;
+                }
             }
             Self::Struct { name, members: _ } => {
                 let this_name = name;
@@ -101,7 +113,7 @@ impl<'a> TypeDef<'a> {
             signed: _,
         } = *self
         {
-            return float;
+            return !float;
         }
         false
     }
@@ -132,24 +144,23 @@ impl<'a> TypeDef<'a> {
 }
 
 impl Display for TypeDef<'_> {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let name = match self {
-            Self::Struct { name, members: _ } => name,
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
+        match self {
+            Self::Struct { name, members: _ } => formatter.write_str(name),
             Self::Function {
-                name,
-                parameters: _,
-                return_type: _,
-            } => name,
+                parameters,
+                return_type,
+            } => write!(formatter, "{:?} -> {}", parameters, return_type),
+            Self::Array(array_type) => write!(formatter, "[{:?}]", array_type),
             Self::Number {
                 name,
                 size: _,
                 float: _,
                 signed: _,
-            } => name,
-            Self::Native(name) => name,
-            Self::Lazy(name) => name,
-        };
-        formatter.write_str(name)
+            } => formatter.write_str(name),
+            Self::Native(name) => formatter.write_str(name),
+            Self::Lazy(name) => formatter.write_str(name),
+        }
     }
 }
 
@@ -197,15 +208,14 @@ impl<'a> Header<'a> {
         (self.types, self.fields)
     }
 
-    fn make_function(
+    fn make_function_type(
         &self,
-        name: &'a Token,
         return_type: &'a Option<Token>,
         params: &'a [(Token, Token)],
     ) -> Rc<TypeDef<'a>> {
         let mut parameters = Vec::new();
-        for (param_name, param_type) in params {
-            parameters.push((param_name.identifier(), self.get_type(param_type)));
+        for (_, param_type) in params {
+            parameters.push(self.get_type(param_type));
         }
 
         let return_type = if let Some(type_name) = return_type {
@@ -218,7 +228,6 @@ impl<'a> Header<'a> {
         };
 
         Rc::new(TypeDef::Function {
-            name: name.identifier(),
             parameters,
             return_type,
         })
@@ -261,7 +270,7 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
             {
                 members.insert(
                     name.identifier(),
-                    self.make_function(name, return_type, params),
+                    self.make_function_type(return_type, params),
                 );
             }
         }
@@ -284,7 +293,7 @@ impl<'a> DeclVisitor<'a, ()> for Header<'a> {
     ) {
         self.fields.insert(
             name.identifier(),
-            self.make_function(name, return_type, params),
+            self.make_function_type(return_type, params),
         );
     }
 
