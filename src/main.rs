@@ -17,6 +17,7 @@ fn main() {
             while io::stdin().read_line(&mut buffer).is_ok() {
                 let lexer = Lexer::new(buffer.chars());
                 let tokens = lexer.scan();
+                // Check if user pressed ^D
                 if tokens.len() > 1 {
                     let mut parser = Parser::new(tokens);
                     let ast = parser.stmt();

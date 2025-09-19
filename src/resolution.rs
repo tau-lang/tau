@@ -89,6 +89,10 @@ impl<'a> Resolution<'a> {
                 .as_str(),
             )
             .clone();
+        self.get_ref_type(ref_type)
+    }
+
+    fn get_ref_type(&self, ref_type: Rc<TypeDef<'a>>) -> Rc<TypeDef<'a>> {
         if let TypeDef::Lazy(lazy_name) = *ref_type {
             self.get_type(lazy_name)
         } else {
@@ -157,8 +161,12 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             | TokenType::SetDiv => {
                 assert!(l.is_number());
                 assert!(r.is_number());
-                // TODO: choose larger number type out of left and right
-                r
+                if l.is_castable_to(&r) {
+                    return r;
+                } else if r.is_castable_to(&l) {
+                    return l;
+                }
+                panic!("number types of left and right side do not match");
             }
             TokenType::And | TokenType::Or | TokenType::Xor => {
                 assert!(l.is_bool());
@@ -168,7 +176,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             TokenType::Leq | TokenType::Low | TokenType::Geq | TokenType::Gre => {
                 assert!(l.is_number());
                 assert!(r.is_number());
-                l
+                self.get_type("bool")
             }
             TokenType::Eq | TokenType::Neq => {
                 if l.is_number() {
@@ -179,8 +187,9 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
                 l
             }
             TokenType::Set => {
-                // TODO: check if right type can be cast to left
-                assert_eq!(l, r);
+                if !r.is_castable_to(&l) {
+                    panic!("can not cast right side of set expression to expected var type")
+                }
                 l
             }
             _ => unreachable!("{:?}", operator),
@@ -195,30 +204,56 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
 
     fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>) -> Rc<TypeDef<'a>> {
         let l = self.visit_expr(object);
-        let r = self.visit_expr(index);
-        assert!(r.is_integer());
-        todo!()
+        if let TypeDef::Array(array_type) = &*l {
+            let r = self.visit_expr(index);
+            assert!(r.is_integer());
+            self.get_ref_type(array_type.clone())
+        } else {
+            panic!("expected to index array")
+        }
     }
 
     fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Rc<TypeDef<'a>> {
         let callee_type = self.visit_expr(callee);
         if let TypeDef::Function {
-            name,
             parameters,
             return_type,
         } = &*callee_type
         {
-            for argument in arguments {
-                // TODO: check argument type
-                self.visit_expr(argument);
+            for (argument, para_type) in arguments.iter().zip(parameters) {
+                let arg_type = self.visit_expr(argument);
+                assert!(
+                    arg_type.is_castable_to(&*self.get_ref_type(para_type.clone())),
+                    "argument type '{}' supplied to function does not match parameter type '{}'",
+                    arg_type,
+                    para_type
+                )
             }
-            return_type.clone()
+            self.get_ref_type(return_type.clone())
         } else {
             panic!("expected to call function")
         }
     }
 
-    fn visit_create(
+    fn visit_create_array(
+        &mut self,
+        array_type: &'a Token,
+        array_size: &'a Option<Rc<Expr>>,
+        fields: &'a [Rc<Expr>],
+    ) -> Rc<TypeDef<'a>> {
+        let name = array_type.identifier();
+        if let Some(size_expr) = array_size {
+            assert!(self.visit_expr(size_expr).is_integer());
+        }
+        let ref_type = self.get_type(name);
+        for field in fields {
+            assert!(self.visit_expr(field).is_castable_to(&ref_type))
+        }
+
+        Rc::new(TypeDef::Array(ref_type))
+    }
+
+    fn visit_create_struct(
         &mut self,
         struct_name: &'a Token,
         fields: &'a [(Token, Rc<Expr>)],
@@ -298,9 +333,23 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
         None
     }
 
-    fn visit_let(&mut self, name: &'a Token, initializer: &'a Expr) -> Option<Rc<TypeDef<'a>>> {
-        let var_type = self.visit_expr(initializer);
-        self.declare_variable(name, var_type);
+    fn visit_let(
+        &mut self,
+        name: &'a Token,
+        var_type: &'a Option<Token>,
+        initializer: &'a Expr,
+    ) -> Option<Rc<TypeDef<'a>>> {
+        let real_type = self.visit_expr(initializer);
+        if let Some(expected_type) = &*var_type {
+            let ref_type = self.get_type(expected_type.identifier());
+            if real_type.is_castable_to(&ref_type) {
+                self.declare_variable(name, ref_type);
+            } else {
+                panic!();
+            }
+        } else {
+            self.declare_variable(name, real_type);
+        }
         None
     }
 
@@ -315,7 +364,10 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
 
     fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Option<Rc<TypeDef<'a>>> {
         self.begin_scope();
-        assert!(self.visit_expr(condition).is_bool());
+        assert!(
+            self.visit_expr(condition).is_bool(),
+            "expected while condition is boolean"
+        );
         self.visit_stmt(body);
         self.end_scope();
         None
@@ -366,21 +418,33 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
     fn visit_function(
         &mut self,
         _: &'a Token,
-        return_type: &'a Token,
+        return_type: &'a Option<Token>,
         params: &'a [(Token, Token)],
-        body: &'a Stmt,
+        body: &'a [Stmt],
     ) {
         assert!(self.return_type.is_none());
         self.begin_scope();
         for (param_name, param_type) in params {
             self.declare_variable(param_name, self.get_type(param_type.identifier()));
         }
-        self.visit_stmt(body);
-        assert_eq!(
-            self.get_type(return_type.identifier()),
+        for stmt in body {
+            self.visit_stmt(stmt);
+        }
+        let expected = if let Some(type_name) = return_type {
+            type_name.identifier()
+        } else {
+            "void"
+        };
+        let real = self.get_ref_type(
             self.return_type
                 .clone()
-                .unwrap_or_else(|| { self.get_type("void") })
+                .unwrap_or_else(|| self.get_type("void")),
+        );
+        assert!(
+            real.is_castable_to(&self.get_type(expected)),
+            "could not cast {} to {}",
+            real,
+            expected
         );
         self.return_type = None;
         self.end_scope();

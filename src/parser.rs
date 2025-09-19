@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+#[derive(Debug)]
 pub struct Parser {
     tokens: VecDeque<Token>,
     declarations: Vec<Decl>,
@@ -48,6 +49,7 @@ impl Parser {
     fn decl_function(&mut self) -> Decl {
         let name = self.advance();
         assert!(name.get_type().is_identifer(), "{:?}", name);
+
         self.consume(&TokenType::ParenLeft);
         let mut params = Vec::new();
         while *self.peek().get_type() != TokenType::ParenRight {
@@ -57,10 +59,23 @@ impl Parser {
             }
         }
         self.consume(&TokenType::ParenRight);
-        self.consume(&TokenType::Colon);
-        let return_type = self.advance();
-        assert!(name.get_type().is_identifer(), "{:?}", name);
-        let body = self.stmt();
+
+        let return_type = if *self.peek().get_type() != TokenType::BraceLeft {
+            self.consume(&TokenType::Colon);
+            let type_name = self.advance();
+            assert!(type_name.get_type().is_identifer());
+            Some(type_name)
+        } else {
+            None
+        };
+
+        self.consume(&TokenType::BraceLeft);
+        let mut body = Vec::new();
+        while *self.peek().get_type() != TokenType::BraceRight {
+            body.push(self.stmt());
+        }
+        self.consume(&TokenType::BraceRight);
+
         Decl::Function {
             name,
             return_type,
@@ -147,9 +162,21 @@ impl Parser {
         self.advance();
         let name = self.advance();
         assert!(name.get_type().is_identifer());
+        let var_type = if *self.peek().get_type() != TokenType::Set {
+            self.consume(&TokenType::Colon);
+            let type_name = self.advance();
+            assert!(type_name.get_type().is_identifer());
+            Some(type_name)
+        } else {
+            None
+        };
         self.consume(&TokenType::Set);
         let initializer = self.expr();
-        Stmt::Let { name, initializer }
+        Stmt::Let {
+            name,
+            var_type,
+            initializer,
+        }
     }
 
     fn stmt_while(&mut self) -> Stmt {
@@ -171,7 +198,26 @@ impl Parser {
             TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => Expr::Literal(next),
             TokenType::Identifier(_) => {
                 if *self.peek().get_type() == TokenType::BraceLeft {
-                    self.expr_create(next)
+                    self.expr_create_struct(next)
+                } else if *self.peek().get_type() == TokenType::BracketLeft {
+                    self.advance();
+                    // The code below is needed to check if we create a new array or want to index a field.
+                    if *self.peek().get_type() == TokenType::BracketRight {
+                        self.advance();
+                        dbg!("create array");
+                        self.expr_create_array(next, None)
+                    } else {
+                        let expr = Rc::new(self.expr());
+                        self.consume(&TokenType::BracketRight);
+                        if *self.peek().get_type() == TokenType::BraceLeft {
+                            self.expr_create_array(next, Some(expr))
+                        } else {
+                            Expr::Index {
+                                object: Rc::new(Expr::Variable(next)),
+                                index: expr,
+                            }
+                        }
+                    }
                 } else {
                     Expr::Variable(next)
                 }
@@ -275,7 +321,25 @@ impl Parser {
         }
     }
 
-    fn expr_create(&mut self, struct_name: Token) -> Expr {
+    fn expr_create_array(&mut self, array_type: Token, array_size: Option<Rc<Expr>>) -> Expr {
+        self.consume(&TokenType::BraceLeft);
+        let mut fields = Vec::new();
+        while *self.peek().get_type() != TokenType::BraceRight {
+            fields.push(Rc::new(self.expr()));
+            if *self.peek().get_type() != TokenType::BraceRight {
+                self.consume(&TokenType::Comma);
+            }
+        }
+        self.consume(&TokenType::BraceRight);
+
+        Expr::CreateArray {
+            array_type,
+            array_size,
+            fields,
+        }
+    }
+
+    fn expr_create_struct(&mut self, struct_name: Token) -> Expr {
         self.consume(&TokenType::BraceLeft);
         let mut fields = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
@@ -290,7 +354,7 @@ impl Parser {
             }
         }
         self.consume(&TokenType::BraceRight);
-        Expr::Create {
+        Expr::CreateStruct {
             struct_name,
             fields,
         }
