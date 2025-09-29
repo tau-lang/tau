@@ -6,7 +6,3 @@ authors = ["Lovis Rentsch", "Karl Zschiebsch"]
 description = "compiler"
 license-file = "./LICENSE"
 rust-version = "1.85"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]

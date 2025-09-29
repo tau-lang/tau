@@ -1,15 +1,25 @@
 use crate::{
-    ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
+    ast::StmtVisitor,
+    compiler::{
+        Compiler,
+        c::{CCodeGenerator, CHeaderGenerator},
+        replace_extension,
+    },
+    header::Header,
+    lexer::Lexer,
+    parser::Parser,
+    resolution::Resolution,
 };
 use std::{env, fs, io};
 
 mod ast;
+mod compiler;
 mod header;
 mod lexer;
 mod parser;
 mod resolution;
 
-fn main() {
+fn main() -> Result<(), io::Error> {
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => {
@@ -29,17 +39,28 @@ fn main() {
                     break;
                 }
             }
+            Ok(())
         }
         2 => {
-            let content = fs::read_to_string(args.get(1).unwrap()).expect("Expected to open file");
+            let filename = args.get(1).unwrap();
+            let content = fs::read_to_string(filename).expect("Expected to open file");
             let lexer = Lexer::new(content.chars());
             let parser = Parser::new(lexer.scan());
             let ast = parser.parse();
             let header = Header::new().headers(&ast);
             let resolution = Resolution::new(header);
-            println!("{:#?}", resolution.resolve(&ast).analysed());
+            let _scopes = resolution.resolve(&ast).analysed();
+            let compiler = Compiler::new(ast);
+            let mut header_output = fs::File::create(replace_extension(filename, "h"))?;
+            compiler.compile(&mut CHeaderGenerator, &mut header_output)?;
+            let mut code_output = fs::File::create(replace_extension(filename, "c"))?;
+            compiler.compile(&mut CCodeGenerator, &mut code_output)?;
+            Ok(())
         }
-        _ => println!("usage: {:?} [file]", args.first().unwrap()),
+        _ => {
+            println!("usage: {:?} [file]", args.first().unwrap());
+            Err(io::Error::new(io::ErrorKind::Other, "false usage"))
+        }
     }
 }
 

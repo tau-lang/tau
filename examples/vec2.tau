@@ -11,13 +11,13 @@ struct vec2 {
     y: f64
 
     fn add(x: f64, y: f64): vec2 {
-        self.x *= x
-        self.y *= y
+        self.x += x
+        self.y += y
         return self
     }
 
     fn sub(x: f64, y: f64): vec2 {
-        self.x *= x
+        self.x -= x
         self.y -= y
         return self
     }

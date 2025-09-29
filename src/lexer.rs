@@ -126,12 +126,11 @@ impl Lexer<'_> {
         while !self.is_at_end() {
             self.scan_token();
         }
-        self.add_token(TokenType::Eof);
         self.tokens
     }
 
     fn scan_token(&mut self) {
-        if let Some(c) = self.advance() {
+        let token_type = if let Some(c) = self.advance() {
             match c {
                 '(' => TokenType::ParenLeft,
                 ')' => TokenType::ParenRight,
