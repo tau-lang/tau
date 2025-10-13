@@ -1,9 +1,12 @@
+#[allow(unused_imports)]
 use crate::{
     ast::StmtVisitor,
     compiler::{
         Compiler,
-        c::{CCodeGenerator, CHeaderGenerator},
-        replace_extension,
+        c_transpiler::{
+            c::{CCodeGenerator, CHeaderGenerator},
+            replace_extension,
+        },
     },
     header::Header,
     lexer::Lexer,
@@ -51,10 +54,18 @@ fn main() -> Result<(), io::Error> {
             let resolution = Resolution::new(header);
             let _scopes = resolution.resolve(&ast).analysed();
             let compiler = Compiler::new(ast);
-            let mut header_output = fs::File::create(replace_extension(filename, "h"))?;
-            compiler.compile(&mut CHeaderGenerator, &mut header_output)?;
-            let mut code_output = fs::File::create(replace_extension(filename, "c"))?;
-            compiler.compile(&mut CCodeGenerator, &mut code_output)?;
+            #[cfg(feature = "cranelift")]
+            {
+                let mut crane_output = fs::File::create(replace_extension(filename, ""))?;
+                compiler.compile(&mut compiler::crane::CraneliftGenerator, &mut crane_output)?;
+            }
+            #[cfg(feature = "ctranspiler")]
+            {
+                let mut header_output = fs::File::create(replace_extension(filename, "h"))?;
+                compiler.compile(&mut CHeaderGenerator, &mut header_output)?;
+                let mut code_output = fs::File::create(replace_extension(filename, "c"))?;
+                compiler.compile(&mut CCodeGenerator, &mut code_output)?;
+            }
             Ok(())
         }
         _ => {
