@@ -1,15 +1,26 @@
 use crate::{
-    ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
+    ast::StmtVisitor,
+    compiler::{
+        Compiler,
+        cpp::{CppCodeGenerator, CppHeaderGenerator},
+        replace_extension,
+    },
+    header::Header,
+    lexer::Lexer,
+    parser::Parser,
+    resolution::Resolution,
 };
-use std::{env, fs, io};
+use std::{collections::HashMap, env, fs, io};
 
 mod ast;
+mod compiler;
 mod header;
 mod lexer;
 mod parser;
 mod resolution;
+mod typing;
 
-fn main() {
+fn main() -> Result<(), io::Error> {
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => {
@@ -21,7 +32,8 @@ fn main() {
                 if tokens.len() > 1 {
                     let mut parser = Parser::new(tokens);
                     let ast = parser.stmt();
-                    let mut resolution = Resolution::new(Header::new());
+                    let (types, fields) = (HashMap::new(), HashMap::new());
+                    let mut resolution = Resolution::new(&types, fields);
                     resolution.visit_stmt(&ast);
                     println!("{:#?}", resolution);
                     buffer.clear();
@@ -29,17 +41,29 @@ fn main() {
                     break;
                 }
             }
+            Ok(())
         }
         2 => {
-            let content = fs::read_to_string(args.get(1).unwrap()).expect("Expected to open file");
+            let filename = args.get(1).unwrap();
+            let content = fs::read_to_string(filename).expect("Expected to open file");
             let lexer = Lexer::new(content.chars());
             let parser = Parser::new(lexer.scan());
             let ast = parser.parse();
             let header = Header::new().headers(&ast);
-            let resolution = Resolution::new(header);
-            println!("{:#?}", resolution.resolve(&ast).analysed());
+            let (types, fields) = header.analysed();
+            let resolution = Resolution::new(&types, fields).resolve(&ast);
+            let _ = resolution.analysed();
+            let compiler = Compiler::new(&ast);
+            let header_output = replace_extension(filename, "hpp");
+            compiler.compile(CppHeaderGenerator, &header_output)?;
+            let code_output = replace_extension(filename, "cpp");
+            compiler.compile(CppCodeGenerator::new(), &code_output)?;
+            Ok(())
         }
-        _ => println!("usage: {:?} [file]", args.first().unwrap()),
+        _ => {
+            println!("usage: {:?} [file]", args.first().unwrap());
+            Err(io::Error::new(io::ErrorKind::Other, "false usage"))
+        }
     }
 }
 
@@ -48,7 +72,7 @@ mod tests {
     use crate::{
         ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
     };
-    use std::fs;
+    use std::{collections::HashMap, fs};
 
     #[test]
     fn lexer() {
@@ -89,7 +113,8 @@ mod tests {
         let lexer = Lexer::new(content.chars());
         let mut parser = Parser::new(lexer.scan());
         let ast = parser.stmt();
-        let mut resolution = Resolution::new(Header::new());
+        let (types, fields) = (HashMap::new(), HashMap::new());
+        let mut resolution = Resolution::new(&types, fields);
         println!("{:#?}", resolution.visit_stmt(&ast));
     }
 }

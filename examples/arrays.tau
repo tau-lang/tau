@@ -1,8 +1,14 @@
-fn main() {
-    let a = u32[16] { 0, 0 }
+extern fn println(data: str)
+
+extern fn i32_to_str(input: i32): str
+
+fn main(): i32 {
+    let a = i32[2 * 8] { 0, 0 }
     let i = 0
     while (i < 16) {
         a[i] = i
         i += 1
     }
+    println(i32_to_str(a[15]))
+    return 0
 }
