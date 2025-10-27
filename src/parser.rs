@@ -38,13 +38,24 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn decl(&mut self) -> Result<Decl> {
         let token = self.advance();
+        if token.get_type() == &TokenType::Eof {
+            return Err(expected(
+                Expected::UnexpectedToken(TokenType::Eof, "any other token".to_string()),
+                self,
+                token,
+            ));
+        }
         match token.get_type() {
             TokenType::Import => self.decl_import(),
             TokenType::Extern => self.decl_extern(),
             TokenType::Function => self.decl_function(false),
             TokenType::Struct => self.decl_struct(),
             TokenType::Const => self.decl_const(),
-            _ => todo!("unimplemented decl: {:?}", token),
+            t => Err(expected(
+                Expected::UnexpectedToken(t.clone(), "import, function, struct, const".to_string()),
+                self,
+                token,
+            )),
         }
     }
 
@@ -273,7 +284,15 @@ impl<'a> Parser<'a> {
             TokenType::Add | TokenType::Sub | TokenType::Not => self.expr_unary(next)?,
             TokenType::ParenLeft => self.expr_grouping()?,
             TokenType::If => self.expr_if()?,
-            _ => todo!("unexpected token in expression: {:?}", next),
+            x => Err(expected(
+                Expected::UnexpectedToken(
+                    x.clone(),
+                    "if, +, -, number, bool, identifier".to_string(),
+                ),
+                self,
+                next,
+            ))?,
+            // _ => todo!("unexpected token in expression: {:?}", next),
         };
 
         while self.has_next() {

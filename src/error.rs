@@ -23,12 +23,12 @@ pub enum Error {
 }
 
 #[derive(Debug, Error, Diagnostic, PartialEq)]
-#[error("unexpexted source code")]
+#[error("unexpexted source code: {cause}")]
 pub struct Source {
     pub cause: Expected,
     #[source_code]
     pub input: String,
-    #[label("{cause}")]
+    #[label(primary, "{cause}")]
     pub location: SourceOffset,
 }
 
@@ -44,6 +44,8 @@ pub(crate) fn expected(expected: Expected, parser: &Parser, next: Token) -> Erro
 #[allow(dead_code)]
 #[derive(Debug, Error, Diagnostic, PartialEq)]
 pub enum Expected {
+    #[error("Unecpected Token \"{0:?}\", expected one of {1:?}")]
+    UnexpectedToken(TokenType, String),
     #[error("Expected a specific token (\"{0:?}\"), found \"{1:?}\"")]
     SpecificTokenType(TokenType, TokenType),
     #[error("Expected Type, found nothing")]
