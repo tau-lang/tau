@@ -10,3 +10,5 @@ rust-version = "1.85"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+thiserror = "2.0.17"
+miette = { version = "7.6.0", features = ["fancy"] }

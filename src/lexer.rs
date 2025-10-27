@@ -35,6 +35,10 @@ impl Token {
             _ => panic!("expected identifier"),
         }
     }
+    /// (line, column)
+    pub fn get_offset(&self) -> (u32, u32) {
+        (self.source.line, self.source.column)
+    }
 }
 
 impl From<Token> for Identifier {

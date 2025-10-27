@@ -1,8 +1,6 @@
 use crate::ast::Decl;
-use std::{
-    io::Error,
-    path::{Path, PathBuf},
-};
+use crate::error::Error;
+use std::path::{Path, PathBuf};
 
 pub mod cpp;
 

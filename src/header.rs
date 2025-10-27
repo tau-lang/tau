@@ -107,8 +107,9 @@ impl<'a> DeclVisitor<'a, ()> for Header {
         };
         let content = fs::read_to_string(filename).expect("Expected to open file");
         let lexer = Lexer::new(content.chars());
-        let parser = Parser::new(lexer.scan());
-        let ast = parser.parse();
+        let parser = Parser::new(lexer.scan(), &content);
+        // FIX:
+        let ast = parser.parse().unwrap();
         let header = Header::new().headers(&ast);
         let (types, fields) = header.analysed();
         self.fields.insert(

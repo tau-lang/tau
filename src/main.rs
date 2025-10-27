@@ -15,13 +15,14 @@ use std::{collections::HashMap, env, fs, io};
 
 mod ast;
 mod compiler;
+mod error;
 mod header;
 mod lexer;
 mod parser;
 mod resolution;
 mod typing;
 
-fn main() -> Result<(), io::Error> {
+fn main() -> crate::error::Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => {
@@ -31,8 +32,8 @@ fn main() -> Result<(), io::Error> {
                 let tokens = lexer.scan();
                 // Check if user pressed ^D
                 if tokens.len() > 1 {
-                    let mut parser = Parser::new(tokens);
-                    let ast = parser.stmt();
+                    let mut parser = Parser::new(tokens, &buffer);
+                    let ast = parser.stmt()?;
                     let (types, fields) = (HashMap::new(), HashMap::new());
                     let mut resolution = Resolution::new(&types, fields);
                     resolution.visit_stmt(&ast);
@@ -42,14 +43,13 @@ fn main() -> Result<(), io::Error> {
                     break;
                 }
             }
-            Ok(())
         }
         2 => {
             let filename = args.get(1).unwrap();
             let content = fs::read_to_string(filename).expect("Expected to open file");
             let lexer = Lexer::new(content.chars());
-            let parser = Parser::new(lexer.scan());
-            let ast = parser.parse();
+            let parser = Parser::new(lexer.scan(), &content);
+            let ast = parser.parse()?;
             let header = Header::new().headers(&ast);
             let (types, fields) = header.analysed();
             let resolution = Resolution::new(&types, fields).resolve(&ast);
@@ -59,13 +59,13 @@ fn main() -> Result<(), io::Error> {
             compiler.compile(CppHeaderGenerator, &header_output)?;
             let code_output = replace_extension(filename, "cpp");
             compiler.compile(CppCodeGenerator::new(), &code_output)?;
-            Ok(())
         }
         _ => {
-            println!("usage: {:?} [file]", args.first().unwrap());
-            Err(io::Error::other("false usage"))
+            // TODO:
+            panic!("usage: {:?} [file]", args.first().unwrap());
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -86,7 +86,7 @@ mod tests {
     fn parse_expr() {
         let content = "(1+a[0]) * hypo(3, 4)";
         let lexer = Lexer::new(content.chars());
-        let mut parser = Parser::new(lexer.scan());
+        let mut parser = Parser::new(lexer.scan(), content);
         println!("{:?}", parser.expr());
     }
 
@@ -94,7 +94,7 @@ mod tests {
     fn parse_stmt() {
         let content = "{ let a = 1 if (a < 2) break }";
         let lexer = Lexer::new(content.chars());
-        let mut parser = Parser::new(lexer.scan());
+        let mut parser = Parser::new(lexer.scan(), content);
         println!("{:?}", parser.stmt());
     }
 
@@ -102,8 +102,8 @@ mod tests {
     fn header_file() {
         let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
         let lexer = Lexer::new(content.chars());
-        let parser = Parser::new(lexer.scan());
-        let ast = parser.parse();
+        let parser = Parser::new(lexer.scan(), &content);
+        let ast = parser.parse().unwrap();
         let header = Header::new();
         println!("{:?}", header.headers(&ast).analysed());
     }
@@ -112,8 +112,8 @@ mod tests {
     fn resolve_stmt() {
         let content = "{ let a = 2 if (a < 2) break }";
         let lexer = Lexer::new(content.chars());
-        let mut parser = Parser::new(lexer.scan());
-        let ast = parser.stmt();
+        let mut parser = Parser::new(lexer.scan(), content);
+        let ast = parser.stmt().unwrap();
         let (types, fields) = Header::new().analysed();
         let mut resolution = Resolution::new(&types, fields);
         println!("{:#?}", resolution.visit_stmt(&ast));
