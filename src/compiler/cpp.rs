@@ -7,8 +7,7 @@ use crate::{
 use std::{
     fmt::{self, Display, Formatter},
     fs::File,
-    io::Error,
-    io::prelude::*,
+    io::{Error, prelude::*},
     ops::Deref,
     path::PathBuf,
     rc::Rc,
@@ -103,17 +102,12 @@ fn visit_vec<T, F>(params: &[T], f: F, j: &str) -> CppSourceCode
 where
     F: FnMut(&T) -> String,
 {
-    params
-        .into_iter()
-        .map(f)
-        .collect::<Vec<String>>()
-        .join(j)
-        .into()
+    params.iter().map(f).collect::<Vec<String>>().join(j).into()
 }
 
 pub struct CppHeaderGenerator;
 
-impl<'a> CppHeaderGenerator {
+impl CppHeaderGenerator {
     fn visit_method(
         &mut self,
         name: &Identifier,
@@ -153,7 +147,7 @@ impl<'a> Generator<'a> for CppHeaderGenerator {
 impl DeclVisitor<'_, CppSourceCode> for CppHeaderGenerator {
     fn visit_import(&mut self, path: &[Identifier]) -> CppSourceCode {
         let path = path
-            .into_iter()
+            .iter()
             .map(|x| format!("{x}"))
             .collect::<Vec<String>>()
             .join("/");
@@ -296,25 +290,27 @@ impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
         operator: &Token,
         right: &'a Rc<Expr>,
     ) -> CppSourceCode {
+        let mut render_op =
+            |op: &str| format!("{} {op} {}", self.visit_expr(left), self.visit_expr(right));
         match operator.get_type() {
-            TokenType::Add => format!("{} + {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Sub => format!("{} - {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Mul => format!("{} * {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Div => format!("{} / {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Eq => format!("{} == {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Neq => format!("{} != {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Low => format!("{} < {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Leq => format!("{} <= {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Gre => format!("{} > {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Geq => format!("{} >= {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::And => format!("{} && {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Or => format!("{} || {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Xor => format!("{} | {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Set => format!("{} = {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::SetAdd => format!("{} += {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::SetSub => format!("{} -= {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::SetMul => format!("{} *= {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::SetDiv => format!("{} /= {}", self.visit_expr(left), self.visit_expr(right)),
+            TokenType::Add => render_op("+"),
+            TokenType::Sub => render_op("-"),
+            TokenType::Mul => render_op("*"),
+            TokenType::Div => render_op("/"),
+            TokenType::Eq => render_op("=="),
+            TokenType::Neq => render_op("!="),
+            TokenType::Low => render_op("<"),
+            TokenType::Leq => render_op("<="),
+            TokenType::Gre => render_op(">"),
+            TokenType::Geq => render_op(">="),
+            TokenType::And => render_op("&&"),
+            TokenType::Or => render_op("||"),
+            TokenType::Xor => render_op("|"),
+            TokenType::Set => render_op("="),
+            TokenType::SetAdd => render_op("+="),
+            TokenType::SetSub => render_op("-="),
+            TokenType::SetMul => render_op("*="),
+            TokenType::SetDiv => render_op("/="),
             _ => todo!("{:?}", operator),
         }
         .into()
@@ -359,7 +355,7 @@ impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
     fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> CppSourceCode {
         let callee = self.visit_expr(callee);
         let arguments = arguments
-            .into_iter()
+            .iter()
             .map(|x| format!("{}", self.visit_expr(x)))
             .collect::<Vec<String>>()
             .join(", ");
@@ -540,7 +536,6 @@ impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
             },
             "\n",
         )
-        .into()
     }
 
     fn visit_function(
