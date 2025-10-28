@@ -4,57 +4,111 @@ use crate::{
     lexer::{Token, TokenType},
     typing::{TypeCell, TypeDef},
 };
-use std::{fs::File, io::Error, io::prelude::*, path::PathBuf, rc::Rc};
+use std::{
+    fmt::{self, Display, Formatter},
+    fs::File,
+    io::Error,
+    io::prelude::*,
+    ops::Deref,
+    path::PathBuf,
+    rc::Rc,
+};
 
-pub fn to_cpp_type<'a>(type_def: &TypeDef) -> String {
-    match type_def {
-        TypeDef::Struct { name, members: _ } => format!("{}*", name),
-        TypeDef::Function {
-            parameters: _,
-            return_type: _,
-        } => todo!(),
-        TypeDef::Array(name) => format!("{}*", to_cpp_type(name)),
-        TypeDef::Lazy(name) => panic!("lazy '{}' should have been deref", name),
-        TypeDef::Number {
-            name,
-            size: _,
-            float: _,
-            signed: _,
-        } => String::from(match *name {
-            "i8" => "char",
-            "i16" => "short",
-            "i32" => "int",
-            "i64" => "long",
-            "u8" => "unsigned char",
-            "u16" => "unsigned short",
-            "u32" => "unsigned int",
-            "u64" => "unsigned long",
-            "f32" => "float",
-            "f64" => "double",
-            _ => panic!(),
-        }),
-        TypeDef::Native(name) => String::from(match *name {
-            "str" => "char*",
-            "bool" => "int",
-            "void" => "void",
-            _ => panic!(),
-        }),
-        TypeDef::Module {
-            types: _,
-            fields: _,
-        }
-        | TypeDef::Unknown => panic!(),
+#[derive(Default, Debug)]
+struct CppSourceCode(String);
+
+impl Display for CppSourceCode {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(formatter, "{}", self.0)
     }
 }
 
-pub fn patch_cpp_name(name: &str) -> &str {
-    match name {
-        "self" => "this",
-        "this" => "$this",
-        "new" => "$new",
-        "yield" => "$yield",
-        _ => name,
+impl From<&TypeDef> for CppSourceCode {
+    fn from(type_def: &TypeDef) -> Self {
+        CppSourceCode(match type_def {
+            TypeDef::Struct { name, members: _ } => format!("{}*", name),
+            TypeDef::Function {
+                parameters: _,
+                return_type: _,
+            } => todo!(),
+            TypeDef::Array(name) => format!("{}*", CppSourceCode::from(name.as_ref())),
+            TypeDef::Lazy(name) => panic!("lazy '{}' should have been deref", name),
+            TypeDef::Number {
+                name,
+                size: _,
+                float: _,
+                signed: _,
+            } => String::from(match *name {
+                "i8" => "char",
+                "i16" => "short",
+                "i32" => "int",
+                "i64" => "long",
+                "u8" => "unsigned char",
+                "u16" => "unsigned short",
+                "u32" => "unsigned int",
+                "u64" => "unsigned long",
+                "f32" => "float",
+                "f64" => "double",
+                _ => panic!(),
+            }),
+            TypeDef::Native(name) => String::from(match *name {
+                "str" => "char*",
+                "bool" => "int",
+                "void" => "void",
+                _ => panic!(),
+            }),
+            TypeDef::Module {
+                types: _,
+                fields: _,
+            }
+            | TypeDef::Unknown => panic!(),
+        })
     }
+}
+
+impl From<&TypeCell> for CppSourceCode {
+    fn from(type_cell: &TypeCell) -> Self {
+        CppSourceCode::from(type_cell.borrow().as_ref())
+    }
+}
+
+impl From<&Identifier> for CppSourceCode {
+    fn from(identifier: &Identifier) -> Self {
+        CppSourceCode(
+            match identifier.get_name() {
+                "self" => "this",
+                "this" => "$this",
+                "new" => "$new",
+                "yield" => "$yield",
+                name => name,
+            }
+            .to_string(),
+        )
+    }
+}
+
+impl From<&(Identifier, TypeCell)> for CppSourceCode {
+    fn from((name, type_cell): &(Identifier, TypeCell)) -> Self {
+        CppSourceCode(format!("{} {name}", CppSourceCode::from(type_cell)))
+    }
+}
+
+impl From<String> for CppSourceCode {
+    fn from(string: String) -> Self {
+        CppSourceCode(string)
+    }
+}
+
+fn visit_vec<T, F>(params: &[T], f: F, j: &str) -> CppSourceCode
+where
+    F: FnMut(&T) -> String,
+{
+    params
+        .into_iter()
+        .map(f)
+        .collect::<Vec<String>>()
+        .join(j)
+        .into()
 }
 
 pub struct CppHeaderGenerator;
@@ -65,70 +119,45 @@ impl<'a> CppHeaderGenerator {
         name: &Identifier,
         return_type: &TypeCell,
         params: &[(Identifier, TypeCell)],
-    ) -> String {
-        let mut builder = String::from("\n\t");
-        builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(patch_cpp_name(name.get_name()));
-        builder.push_str("(");
-        let mut first = true;
-        for (param_name, param_type) in params {
-            if !first {
-                builder.push_str(", ");
-            } else {
-                first = false;
-            }
-            builder.push_str(&to_cpp_type(param_type.borrow().as_ref()));
-            builder.push_str(" ");
-            builder.push_str(param_name.get_name());
-        }
-        builder.push_str(");\n");
-        builder
+    ) -> CppSourceCode {
+        let return_type = CppSourceCode::from(return_type.borrow().as_ref());
+        let name = CppSourceCode::from(name);
+        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+        CppSourceCode(format!("{return_type} {name}({params});"))
     }
 }
 
 impl<'a> Generator<'a> for CppHeaderGenerator {
-    fn generate(&mut self, declarations: &'a [Decl], output: &PathBuf) -> Result<(), Error> {
+    fn generate(&mut self, ast: &'a [Decl], output: &PathBuf) -> Result<(), Error> {
         let mut file = File::create(output)?;
-        let mut builder = String::with_capacity(255);
-
-        let file_name = output.file_name().expect("expect path has filename");
-        let os_str = file_name.to_ascii_uppercase();
-        let makro_name = os_str
+        let mut path_buf = output.clone();
+        path_buf.set_extension("");
+        let module_name = path_buf
+            .file_name()
+            .expect("expect path has filename")
             .to_str()
             .expect("expect filename is UTF-8")
-            .replace(".", "_");
-        let module_name = file_name
-            .to_str()
-            .expect("expect filename is UTF-8")
-            .replace(".hpp", "")
-            .replace("/", "_");
+            .replace(".", "_")
+            .replace("/", "$");
+        let makro_name = module_name.to_uppercase();
 
-        for decl in declarations {
-            builder.push_str(&self.visit_decl(decl));
-        }
+        let declarations = visit_vec(ast, |x| format!("{}", self.visit_decl(x)), "\n");
+
         write!(
             file,
-            "#ifndef {}\n#define {} 1\n\nnamespace {} {{\n{}\n}}\n#endif",
-            makro_name, makro_name, module_name, builder
+            "#ifndef {makro_name}\n#define {makro_name} 1\nnamespace {module_name} {{\n{declarations}\n}}\n#endif\n"
         )
     }
 }
 
-impl DeclVisitor<'_, String> for CppHeaderGenerator {
-    fn visit_import(&mut self, path: &[Identifier]) -> String {
-        let mut builder = String::from("#include <");
-        let mut first = true;
-        for name in path {
-            if first {
-                first = false;
-            } else {
-                builder.push_str("/");
-            }
-            builder.push_str(name.get_name());
-        }
-        builder.push_str(".hpp>\n");
-        builder
+impl DeclVisitor<'_, CppSourceCode> for CppHeaderGenerator {
+    fn visit_import(&mut self, path: &[Identifier]) -> CppSourceCode {
+        let path = path
+            .into_iter()
+            .map(|x| format!("{x}"))
+            .collect::<Vec<String>>()
+            .join("/");
+        CppSourceCode(format!("#include <{path}.hpp>"))
     }
 
     fn visit_struct(
@@ -136,33 +165,28 @@ impl DeclVisitor<'_, String> for CppHeaderGenerator {
         name: &Identifier,
         fields: &[(Identifier, TypeCell)],
         methods: &[Rc<Decl>],
-    ) -> String {
-        let mut builder = String::from("\nclass ");
-        builder.push_str(patch_cpp_name(name.get_name()));
-        builder.push_str(" {\n  public:\n");
-        for (field_name, field_type) in fields {
-            builder.push_str("\t");
-            builder.push_str(&to_cpp_type(field_type.borrow().as_ref()));
-            builder.push_str(" ");
-            builder.push_str(field_name.get_name());
-            builder.push_str(";\n");
-        }
-        for method in methods {
-            if let Decl::Function {
-                name,
-                return_type,
-                params,
-                body: _,
-                is_extern: _,
-            } = &**method
-            {
-                builder.push_str(&self.visit_method(name, return_type, params));
-            } else {
-                panic!("expected method");
-            }
-        }
-        builder.push_str("};\n");
-        builder
+    ) -> CppSourceCode {
+        let name = CppSourceCode::from(name);
+        let fields = visit_vec(fields, |x| format!("  {};", CppSourceCode::from(x)), "\n");
+        let methods = visit_vec(
+            methods,
+            |decl| {
+                if let Decl::Function {
+                    name,
+                    return_type,
+                    params,
+                    body: _,
+                    is_extern: _,
+                } = decl.as_ref()
+                {
+                    format!("  {}", self.visit_method(name, return_type, params))
+                } else {
+                    panic!()
+                }
+            },
+            "\n",
+        );
+        format!("class {name} {{\npublic:\n{fields}\n{methods}\n}};").into()
     }
 
     fn visit_function(
@@ -172,126 +196,65 @@ impl DeclVisitor<'_, String> for CppHeaderGenerator {
         params: &[(Identifier, TypeCell)],
         _: &[Stmt],
         is_extern: bool,
-    ) -> String {
-        let mut builder = String::from("\nextern ");
-        if is_extern {
-            builder.push_str("\"C\" ")
-        }
-        builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(patch_cpp_name(name.get_name()));
-        builder.push_str("(");
-        if params.len() > 0 {
-            let (first_name, first_type) = params.get(0).unwrap();
-            builder.push_str(&to_cpp_type(first_type.borrow().as_ref()));
-            builder.push_str(" ");
-            builder.push_str(first_name.get_name());
-            for (param_name, param_type) in &params[1..] {
-                builder.push_str(", ");
-                builder.push_str(&to_cpp_type(param_type.borrow().as_ref()));
-                builder.push_str(" ");
-                builder.push_str(param_name.get_name());
-            }
-        }
-        builder.push_str(");\n");
-        builder
+    ) -> CppSourceCode {
+        let name = CppSourceCode::from(name);
+        let is_extern = if is_extern { "\"C\" " } else { "" };
+        let return_type = CppSourceCode::from(return_type.borrow().as_ref());
+        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+        CppSourceCode(format!("extern {is_extern}{return_type} {name}({params});"))
     }
 
-    fn visit_const(&mut self, name: &Identifier, var_type: &TypeCell, _: &Expr) -> String {
-        let mut builder = String::from("\nextern ");
-        builder.push_str(&to_cpp_type(var_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(name.get_name());
-        builder.push_str(";\n");
-        builder
+    fn visit_const(
+        &mut self,
+        var_name: &Identifier,
+        var_type: &TypeCell,
+        _: &Expr,
+    ) -> CppSourceCode {
+        let var_name = CppSourceCode::from(var_name);
+        let var_type = CppSourceCode::from(var_type.borrow().as_ref());
+        format!("extern {var_type} {var_name};").into()
     }
 }
 
 pub struct CppCodeGenerator {
-    intendation: usize,
     main_type: Option<Rc<TypeDef>>,
 }
 
 impl<'a> CppCodeGenerator {
     pub fn new() -> CppCodeGenerator {
-        CppCodeGenerator {
-            intendation: 0,
-            main_type: None,
-        }
+        CppCodeGenerator { main_type: None }
     }
 
-    fn begin_scope(&mut self) {
-        self.intendation += 1;
-    }
-
-    fn end_scope(&mut self) {
-        self.intendation -= 1;
-    }
-
-    fn generate_main(return_type: Rc<TypeDef>, module_name: &str) -> String {
-        let mut builder = String::from("int main() {\n");
-        let return_type = to_cpp_type(return_type.as_ref());
-        if return_type == "void" {
-            builder.push_str(module_name);
-            builder.push_str("::main();\n");
-            builder.push_str("return 0;\n")
-        } else if return_type == "int" {
-            builder.push_str("return ");
-            builder.push_str(module_name);
-            builder.push_str("::main();\n")
-        } else {
-            panic!("unsupported return type")
-        }
-        builder.push_str("}");
-        builder
+    fn visit_main(&self, return_type: Rc<TypeDef>, module_name: &str) -> CppSourceCode {
+        let return_type = CppSourceCode::from(return_type.as_ref());
+        let body = match (return_type.0).deref() {
+            "void" => format!("{module_name}::main();\nreturn 0;\n"),
+            "int" => format!("return {module_name}::main();\n"),
+            _ => panic!("unsupported return type"),
+        };
+        format!("int main() {{\n{body}}}\n").into()
     }
 
     fn visit_method(
         &mut self,
-        self_type: &Identifier,
+        struct_name: &Identifier,
         name: &Identifier,
         return_type: &TypeCell,
         params: &[(Identifier, TypeCell)],
         body: &'a [Stmt],
-        is_extern: bool,
-    ) -> String {
-        let mut builder = String::with_capacity(255);
-        builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(patch_cpp_name(self_type.get_name()));
-        builder.push_str("::");
-        builder.push_str(name.get_name());
-        builder.push_str("(");
-        let mut first = true;
-        for (param_name, param_type) in params {
-            if !first {
-                builder.push_str(", ");
-            } else {
-                first = false;
-            }
-            builder.push_str(&to_cpp_type(param_type.borrow().as_ref()));
-            builder.push_str(" ");
-            builder.push_str(param_name.get_name());
-        }
-        builder.push_str(")");
-        if is_extern {
-            builder.push_str(";\n")
-        } else {
-            self.begin_scope();
-            builder.push_str(" {\n");
-            for stmt in body {
-                builder.push_str(&self.visit_stmt(stmt));
-            }
-            builder.push_str("}\n");
-            self.end_scope();
-        }
-        builder
+        _: bool,
+    ) -> CppSourceCode {
+        let struct_name = CppSourceCode::from(struct_name);
+        let name = CppSourceCode::from(name);
+        let return_type = CppSourceCode::from(return_type);
+        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+        let body = visit_vec(body, |stmt| format!("{}", self.visit_stmt(stmt)), "\n");
+        format!("{return_type} {struct_name}::{name}({params}) {{\n{body}\n}}").into()
     }
 }
 
 impl<'a> Generator<'a> for CppCodeGenerator {
     fn generate(&mut self, ast: &'a [Decl], output: &PathBuf) -> Result<(), Error> {
-        let mut builder = String::with_capacity(255);
         let mut file = File::create(output)?;
         let mut path_buf = output.clone();
         path_buf.set_extension("hpp");
@@ -302,29 +265,29 @@ impl<'a> Generator<'a> for CppCodeGenerator {
             .expect("expect filename is UTF-8");
         let module_name = header_file.replace(".hpp", "").replace(".", "_");
 
-        builder.push_str("namespace ");
-        builder.push_str(&module_name);
-        builder.push_str(" {\n");
-        for decl in ast {
-            builder.push_str(&self.visit_decl(decl));
-        }
-        builder.push_str("}\n");
-        if let Some(main_type) = &self.main_type {
-            builder.push_str(&Self::generate_main(main_type.clone(), &module_name));
-        }
+        let declarations = visit_vec(ast, |decl| format!("{}", self.visit_decl(decl)), "\n");
+        let main_function = if let Some(return_type) = &self.main_type {
+            self.visit_main(return_type.clone(), &module_name)
+        } else {
+            CppSourceCode::default()
+        };
 
-        write!(file, "#include \"{}\"\n{}", header_file, builder)
+        write!(
+            file,
+            "#include \"{header_file}\"\nnamespace {module_name} {{\n{declarations}\n}}\n{main_function}"
+        )
     }
 }
 
-impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> String {
+impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
+    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> CppSourceCode {
         match operator.get_type() {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
             TokenType::Sub => format!("-{}", self.visit_expr(right)),
             TokenType::Not => format!("!{}", self.visit_expr(right)),
             _ => todo!(),
         }
+        .into()
     }
 
     fn visit_binary(
@@ -332,47 +295,37 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
         left: &'a Rc<Expr>,
         operator: &Token,
         right: &'a Rc<Expr>,
-    ) -> String {
+    ) -> CppSourceCode {
         match operator.get_type() {
             TokenType::Add => format!("{} + {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Sub => format!("{} - {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Mul => format!("{} * {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Div => format!("{} / {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Eq => format!("{} == {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Neq => {
-                format!("{} != {}", self.visit_expr(left), self.visit_expr(right))
-            }
+            TokenType::Neq => format!("{} != {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Low => format!("{} < {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Leq => {
-                format!("{} <= {}", self.visit_expr(left), self.visit_expr(right))
-            }
+            TokenType::Leq => format!("{} <= {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Gre => format!("{} > {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::Geq => {
-                format!("{} >= {}", self.visit_expr(left), self.visit_expr(right))
-            }
-            TokenType::And => {
-                format!("{} && {}", self.visit_expr(left), self.visit_expr(right))
-            }
+            TokenType::Geq => format!("{} >= {}", self.visit_expr(left), self.visit_expr(right)),
+            TokenType::And => format!("{} && {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Or => format!("{} || {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Xor => format!("{} | {}", self.visit_expr(left), self.visit_expr(right)),
             TokenType::Set => format!("{} = {}", self.visit_expr(left), self.visit_expr(right)),
-            TokenType::SetAdd => {
-                format!("{} += {}", self.visit_expr(left), self.visit_expr(right))
-            }
-            TokenType::SetSub => {
-                format!("{} -= {}", self.visit_expr(left), self.visit_expr(right))
-            }
-            TokenType::SetMul => {
-                format!("{} *= {}", self.visit_expr(left), self.visit_expr(right))
-            }
-            TokenType::SetDiv => {
-                format!("{} /= {}", self.visit_expr(left), self.visit_expr(right))
-            }
+            TokenType::SetAdd => format!("{} += {}", self.visit_expr(left), self.visit_expr(right)),
+            TokenType::SetSub => format!("{} -= {}", self.visit_expr(left), self.visit_expr(right)),
+            TokenType::SetMul => format!("{} *= {}", self.visit_expr(left), self.visit_expr(right)),
+            TokenType::SetDiv => format!("{} /= {}", self.visit_expr(left), self.visit_expr(right)),
             _ => todo!("{:?}", operator),
         }
+        .into()
     }
 
-    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &Identifier, lookup: &TypeCell) -> String {
+    fn visit_get(
+        &mut self,
+        left: &'a Rc<Expr>,
+        right: &Identifier,
+        lookup: &TypeCell,
+    ) -> CppSourceCode {
         let left = self.visit_expr(left);
         let right = right.get_name();
         match lookup.borrow().as_ref() {
@@ -389,25 +342,28 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
                 error, left, right
             ),
         }
+        .into()
     }
 
-    fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>, _: &TypeCell) -> String {
-        format!("{}[{}]", self.visit_expr(object), self.visit_expr(index))
+    fn visit_index(
+        &mut self,
+        object: &'a Rc<Expr>,
+        index: &'a Rc<Expr>,
+        _: &TypeCell,
+    ) -> CppSourceCode {
+        let object = self.visit_expr(object);
+        let index = self.visit_expr(index);
+        format!("{object}[{index}]").into()
     }
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> String {
-        let mut builder = self.visit_expr(callee);
-        builder.push_str("(");
-        if arguments.len() > 0 {
-            let first_arg = arguments.get(0).unwrap();
-            builder.push_str(&self.visit_expr(first_arg));
-            for arg in &arguments[1..] {
-                builder.push_str(", ");
-                builder.push_str(&self.visit_expr(arg));
-            }
-        }
-        builder.push_str(")");
-        builder
+    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> CppSourceCode {
+        let callee = self.visit_expr(callee);
+        let arguments = arguments
+            .into_iter()
+            .map(|x| format!("{}", self.visit_expr(x)))
+            .collect::<Vec<String>>()
+            .join(", ");
+        format!("{callee}({arguments})").into()
     }
 
     fn visit_create_array(
@@ -415,44 +371,39 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
         array_type: &TypeCell,
         array_size: &Option<Rc<Expr>>,
         fields: &'a [Rc<Expr>],
-    ) -> String {
-        let mut builder = String::from("new ");
-        builder.push_str(&to_cpp_type(array_type.borrow().as_ref()));
-        builder.push_str("[");
-        if let Some(array_size) = array_size {
-            builder.push_str(&self.visit_expr(array_size));
-        }
-        builder.push_str("]");
-        builder.push_str("{");
-        for field in fields {
-            builder.push_str(&self.visit_expr(field));
-            builder.push_str(", ");
-        }
-        builder.push_str("}");
-        builder
+    ) -> CppSourceCode {
+        let array_type = CppSourceCode::from(array_type);
+        let array_size = array_size
+            .as_ref()
+            .map(|expr| self.visit_expr(expr.as_ref()))
+            .unwrap_or_default();
+        let fields = visit_vec(fields, |x| format!("{}", self.visit_expr(x)), ", ");
+        format!("new {array_type}[{array_size}]{{{fields}}}").into()
     }
 
     fn visit_create_struct(
         &mut self,
         struct_type: &TypeCell,
         fields: &'a [(Identifier, Rc<Expr>)],
-    ) -> String {
-        let mut builder = String::from("new ");
-        if let TypeDef::Struct { name, members: _ } = struct_type.borrow().as_ref() {
-            builder.push_str(name.get_name());
+    ) -> CppSourceCode {
+        let struct_type = struct_type.borrow();
+        let struct_type = if let TypeDef::Struct { name, members: _ } = struct_type.as_ref() {
+            name.get_name()
         } else {
-            panic!("expected created type is a struct");
-        }
-        builder.push_str(" {");
-        for (field_name, field_init) in fields {
-            builder.push_str(".");
-            builder.push_str(field_name.get_name());
-            builder.push_str(" = ");
-            builder.push_str(&self.visit_expr(field_init));
-            builder.push_str(", ")
-        }
-        builder.push_str("}");
-        builder
+            unreachable!()
+        };
+        let fields = visit_vec(
+            fields,
+            |(field_name, field_init)| {
+                format!(
+                    ".{} = {}",
+                    CppSourceCode::from(field_name),
+                    self.visit_expr(field_init)
+                )
+            },
+            ", ",
+        );
+        format!("new {struct_type}{{{fields}}}").into()
     }
 
     fn visit_if(
@@ -461,85 +412,48 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
         if_branch: &'a Rc<Stmt>,
         else_branch: &'a Option<Rc<Stmt>>,
         expression_type: &TypeCell,
-    ) -> String {
+    ) -> CppSourceCode {
+        let condition = self.visit_expr(condition);
+        let if_branch = self.visit_stmt(if_branch);
         if let TypeDef::Unknown = expression_type.borrow().as_ref() {
-            let mut builder = String::from("if (");
-            builder.push_str(&self.visit_expr(condition));
-            builder.push_str(") ");
-            builder.push_str(&self.visit_stmt(if_branch));
-            if let Some(branch) = else_branch {
-                builder.push_str("else ");
-                builder.push_str(&self.visit_stmt(branch))
-            }
-            builder
-        } else {
-            let mut builder = String::from("(");
-            builder.push_str(&self.visit_expr(condition));
-            builder.push_str(" ? ");
-            builder.push_str(&self.visit_stmt(if_branch));
-            builder.push_str(" : ");
             let else_branch = else_branch
                 .as_ref()
-                .expect("expected else expression exists");
-            builder.push_str(&self.visit_stmt(else_branch));
-            builder.push_str(")");
-            builder
+                .map(|expr| format!(" else {}", self.visit_stmt(expr.as_ref())))
+                .unwrap_or_default();
+            format!("if ({condition}) {if_branch}{else_branch}").into()
+        } else {
+            let else_branch = self.visit_stmt(
+                else_branch
+                    .as_ref()
+                    .expect("expected else expression exists"),
+            );
+            format!("{condition} ? {if_branch} : {else_branch}").into()
         }
     }
 
-    fn visit_literal(&mut self, value: &Token) -> String {
+    fn visit_literal(&mut self, value: &Token) -> CppSourceCode {
         match value.get_type() {
             TokenType::Bool(value) => value.to_string(),
             TokenType::Number(value) => value.to_string(),
             TokenType::String(content) => format!("\"{}\"", content),
             _ => todo!(),
         }
+        .into()
     }
 
-    fn visit_variable(&mut self, name: &Identifier, _: &TypeCell) -> String {
-        String::from(patch_cpp_name(name.get_name()))
+    fn visit_variable(&mut self, name: &Identifier, _: &TypeCell) -> CppSourceCode {
+        name.into()
     }
 }
 
-impl<'a> StmtVisitor<'a, String> for CppCodeGenerator {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) -> String {
-        let intend = "\t".repeat(self.intendation);
-        match stmt {
-            Stmt::Block { statements } => self.visit_block(statements),
-            Stmt::Let {
-                name,
-                var_type,
-                initializer,
-            } => format!("{}{}", intend, self.visit_let(name, var_type, initializer)),
-            Stmt::Return { value } => format!("{}{}", intend, self.visit_return(value)),
-            Stmt::Break => format!("{}{}", intend, self.visit_break()),
-            Stmt::While { condition, body } => {
-                format!("{}{}", intend, self.visit_while(condition, body))
-            }
-            Stmt::For {
-                initializer,
-                condition,
-                increment,
-                body,
-            } => format!(
-                "{}{}",
-                intend,
-                self.visit_for(initializer, condition, increment, body)
-            ),
-            Stmt::ExprStmt(expr) => format!("{}{}", intend, self.visit_expr_stmt(expr)),
-        }
-    }
-
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> String {
-        let mut builder = String::from("{\n");
-        self.begin_scope();
-        for stmt in statements {
-            builder.push_str(&self.visit_stmt(stmt));
-        }
-        self.end_scope();
-        builder.push_str(&"\t".repeat(self.intendation));
-        builder.push_str("}");
-        builder
+impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> CppSourceCode {
+        let statements = visit_vec(
+            statements,
+            |stmt| format!("{}", self.visit_stmt(stmt)),
+            "\n",
+        );
+        format!("{{\n{statements}\n}}").into()
     }
 
     fn visit_let(
@@ -547,35 +461,26 @@ impl<'a> StmtVisitor<'a, String> for CppCodeGenerator {
         name: &Identifier,
         var_type: &TypeCell,
         initializer: &'a Expr,
-    ) -> String {
-        let mut builder = String::with_capacity(64);
-        builder.push_str(&to_cpp_type(var_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(patch_cpp_name(name.get_name()));
-        builder.push_str(" = ");
-        builder.push_str(&self.visit_expr(initializer));
-        builder.push_str(";\n");
-        builder
+    ) -> CppSourceCode {
+        let name = CppSourceCode::from(name);
+        let var_type = CppSourceCode::from(var_type);
+        let initializer = self.visit_expr(initializer);
+        format!("{var_type} {name} = {initializer};").into()
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> String {
-        let mut builder = String::from("return ");
-        builder.push_str(&self.visit_expr(value));
-        builder.push_str(";\n");
-        builder
+    fn visit_return(&mut self, value: &'a Expr) -> CppSourceCode {
+        let value = self.visit_expr(value);
+        format!("return {value};").into()
     }
 
-    fn visit_break(&mut self) -> String {
-        String::from("break;\n")
+    fn visit_break(&mut self) -> CppSourceCode {
+        "break;".to_string().into()
     }
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> String {
-        let mut builder = String::from("while (");
-        builder.push_str(&self.visit_expr(condition));
-        builder.push_str(") ");
-        builder.push_str(&self.visit_stmt(body));
-        builder.push_str("\n");
-        builder
+    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> CppSourceCode {
+        let condition = self.visit_expr(condition);
+        let body = self.visit_stmt(body);
+        format!("while ({condition}) {body}").into()
     }
 
     fn visit_for(
@@ -584,29 +489,23 @@ impl<'a> StmtVisitor<'a, String> for CppCodeGenerator {
         condition: &'a Expr,
         increment: &'a Expr,
         body: &'a Rc<Stmt>,
-    ) -> String {
-        self.begin_scope();
-        let mut builder = String::from("for (");
-        builder.push_str(&self.visit_stmt(initializer));
-        builder.push_str(&self.visit_expr(condition));
-        builder.push_str(";");
-        builder.push_str(&self.visit_expr(increment));
-        builder.push_str(") ");
-        builder.push_str(&self.visit_stmt(body));
-        self.end_scope();
-        builder
+    ) -> CppSourceCode {
+        let initializer = self.visit_stmt(initializer);
+        let condition = self.visit_expr(condition);
+        let increment = self.visit_expr(increment);
+        let body = self.visit_stmt(body);
+        format!("for ({initializer}; {condition}; {increment}) {body}").into()
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> String {
-        let mut builder = self.visit_expr(expr);
-        builder.push_str(";\n");
-        builder
+    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> CppSourceCode {
+        let expr = self.visit_expr(expr);
+        format!("{expr};").into()
     }
 }
 
-impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
-    fn visit_import(&mut self, _: &[Identifier]) -> String {
-        String::new()
+impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
+    fn visit_import(&mut self, _: &[Identifier]) -> CppSourceCode {
+        CppSourceCode::default()
     }
 
     fn visit_struct(
@@ -614,31 +513,34 @@ impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
         name: &Identifier,
         _: &[(Identifier, TypeCell)],
         methods: &'a [Rc<Decl>],
-    ) -> String {
-        let mut builder = String::with_capacity(255);
-        let self_type = name;
-        for method in methods {
-            if let Decl::Function {
-                name,
-                return_type,
-                params,
-                body,
-                is_extern,
-            } = method.as_ref()
-            {
-                builder.push_str(&self.visit_method(
-                    self_type,
+    ) -> CppSourceCode {
+        let struct_type = name;
+        visit_vec(
+            methods,
+            |method| {
+                if let Decl::Function {
+                    name,
+                    return_type,
+                    params,
+                    body,
+                    is_extern,
+                } = method.as_ref()
+                {
+                    format!("{}", self.visit_method(
+                    struct_type,
                     name,
                     return_type,
                     params,
                     body,
                     *is_extern,
                 ))
-            } else {
-                panic!("expected method")
-            }
-        }
-        builder
+                } else {
+                    panic!("expected method")
+                }
+            },
+            "\n",
+        )
+        .into()
     }
 
     fn visit_function(
@@ -648,40 +550,18 @@ impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
         params: &[(Identifier, TypeCell)],
         body: &'_ [Stmt],
         is_extern: bool,
-    ) -> String {
+    ) -> CppSourceCode {
         if name.get_name() == "main" {
             self.main_type = Some(return_type.borrow().clone())
         }
         if is_extern {
-            return String::new();
+            return CppSourceCode::default();
         }
-
-        let mut builder = String::with_capacity(255);
-        builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(patch_cpp_name(name.get_name()));
-        builder.push_str("(");
-        if params.len() > 0 {
-            let (first_name, first_type) = params.get(0).unwrap();
-            builder.push_str(&to_cpp_type(first_type.borrow().as_ref()));
-            builder.push_str(" ");
-            builder.push_str(first_name.get_name());
-            for (param_name, param_type) in &params[1..] {
-                builder.push_str(", ");
-                builder.push_str(&to_cpp_type(param_type.borrow().as_ref()));
-                builder.push_str(" ");
-                builder.push_str(param_name.get_name());
-            }
-        }
-        builder.push_str(")");
-        self.begin_scope();
-        builder.push_str(" {\n");
-        for stmt in body {
-            builder.push_str(&self.visit_stmt(stmt));
-        }
-        builder.push_str("}\n");
-        self.end_scope();
-        builder
+        let name = CppSourceCode::from(name);
+        let return_type = CppSourceCode::from(return_type);
+        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+        let body = visit_vec(body, |x| format!("{}", self.visit_stmt(x)), "\n");
+        format!("{return_type} {name} ({params}) {{\n{body}\n}}").into()
     }
 
     fn visit_const(
@@ -689,13 +569,10 @@ impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
         name: &Identifier,
         var_type: &TypeCell,
         initializer: &'_ Expr,
-    ) -> String {
-        let mut builder = String::from(&to_cpp_type(var_type.borrow().as_ref()));
-        builder.push_str(" ");
-        builder.push_str(name.get_name());
-        builder.push_str(" = ");
-        builder.push_str(&self.visit_expr(initializer));
-        builder.push_str(";\n");
-        builder
+    ) -> CppSourceCode {
+        let name = CppSourceCode::from(name);
+        let var_type = CppSourceCode::from(var_type);
+        let initializer = self.visit_expr(initializer);
+        format!("{var_type} {name} = {initializer};").into()
     }
 }
