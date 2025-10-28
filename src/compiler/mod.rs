@@ -1,5 +1,8 @@
 use crate::ast::Decl;
-use std::{io::Error, path::PathBuf};
+use std::{
+    io::Error,
+    path::{Path, PathBuf},
+};
 
 pub mod cpp;
 
@@ -10,7 +13,7 @@ pub fn replace_extension(path: &str, new_ext: &str) -> PathBuf {
 }
 
 pub trait Generator<'a> {
-    fn generate(&mut self, ast: &'a [Decl], output: &PathBuf) -> Result<(), Error>;
+    fn generate(&mut self, ast: &'a [Decl], output: &Path) -> Result<(), Error>;
 }
 
 pub struct Compiler<'a> {
@@ -22,11 +25,7 @@ impl<'a> Compiler<'a> {
         Compiler { ast }
     }
 
-    pub fn compile<T: Generator<'a>>(
-        &self,
-        mut generator: T,
-        output: &PathBuf,
-    ) -> Result<(), Error> {
-        generator.generate(&self.ast, output)
+    pub fn compile<T: Generator<'a>>(&self, mut generator: T, output: &Path) -> Result<(), Error> {
+        generator.generate(self.ast, output)
     }
 }

@@ -1,3 +1,4 @@
+#![allow(clippy::needless_return)]
 use crate::{
     ast::StmtVisitor,
     compiler::{
@@ -62,7 +63,7 @@ fn main() -> Result<(), io::Error> {
         }
         _ => {
             println!("usage: {:?} [file]", args.first().unwrap());
-            Err(io::Error::new(io::ErrorKind::Other, "false usage"))
+            Err(io::Error::other("false usage"))
         }
     }
 }

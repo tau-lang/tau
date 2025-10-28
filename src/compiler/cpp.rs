@@ -9,7 +9,6 @@ use std::{
     fs::File,
     io::{Error, prelude::*},
     ops::Deref,
-    path::PathBuf,
     rc::Rc,
 };
 
@@ -122,9 +121,9 @@ impl CppHeaderGenerator {
 }
 
 impl<'a> Generator<'a> for CppHeaderGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &PathBuf) -> Result<(), Error> {
+    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> Result<(), Error> {
         let mut file = File::create(output)?;
-        let mut path_buf = output.clone();
+        let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
         let module_name = path_buf
             .file_name()
@@ -248,9 +247,9 @@ impl<'a> CppCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CppCodeGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &PathBuf) -> Result<(), Error> {
+    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> Result<(), Error> {
         let mut file = File::create(output)?;
-        let mut path_buf = output.clone();
+        let mut path_buf = output.to_path_buf();
         path_buf.set_extension("hpp");
         let header_file = path_buf
             .file_name()

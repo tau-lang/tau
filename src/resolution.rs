@@ -66,20 +66,19 @@ impl<'a> Resolution<'a> {
         let ref_type: Rc<TypeDef> = self
             .types
             .get(name)
-            .expect(
-                format!(
+            .unwrap_or_else(|| {
+                panic!(
                     "expected type name does not exist '{}' in {:#?}",
                     name, self
                 )
-                .as_str(),
-            )
+            })
             .clone();
         self.get_ref_type(ref_type)
     }
 
     fn get_ref_type(&self, ref_type: Rc<TypeDef>) -> Rc<TypeDef> {
         if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
-            self.get_type(&lazy_name)
+            self.get_type(lazy_name)
         } else {
             ref_type
         }
@@ -92,7 +91,7 @@ impl<'a> Resolution<'a> {
                 .expect("expected struct contains field")
                 .clone();
             if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
-                self.get_type(&lazy_name)
+                self.get_type(lazy_name)
             } else {
                 ref_type
             }
@@ -102,7 +101,7 @@ impl<'a> Resolution<'a> {
                 .expect("expected modue contains field")
                 .clone();
             if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
-                self.get_type(&lazy_name)
+                self.get_type(lazy_name)
             } else {
                 ref_type
             }
@@ -231,7 +230,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
             for (argument, para_type) in arguments.iter().zip(parameters) {
                 let arg_type = self.visit_expr(argument);
                 assert!(
-                    arg_type.is_castable_to(&*self.get_ref_type(para_type.clone())),
+                    arg_type.is_castable_to(&self.get_ref_type(para_type.clone())),
                     "argument type '{}' supplied to function does not match parameter type '{}'",
                     arg_type,
                     para_type
@@ -273,7 +272,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
             let field_type = self.visit_expr(field_expr);
             assert!(
                 field_type
-                    .is_castable_to(&*self.get_member(ref_type.clone(), field_name.get_name()))
+                    .is_castable_to(&self.get_member(ref_type.clone(), field_name.get_name()))
             );
         }
         *struct_type.borrow_mut() = ref_type.clone();

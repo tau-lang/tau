@@ -171,7 +171,7 @@ impl Display for TypeDef {
                 signed: _,
             }
             | Self::Native(name) => formatter.write_str(name),
-            Self::Lazy(name) => formatter.write_str(&name),
+            Self::Lazy(name) => formatter.write_str(name),
             Self::Unknown => formatter.write_str("Unknown"),
         }
     }

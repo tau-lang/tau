@@ -194,12 +194,10 @@ impl Lexer<'_> {
                             self.advance();
                         }
                         return self.scan_token();
+                    } else if self.matchc('=') {
+                        TokenType::SetDiv
                     } else {
-                        if self.matchc('=') {
-                            TokenType::SetDiv
-                        } else {
-                            TokenType::Div
-                        }
+                        TokenType::Div
                     }
                 }
                 '&' => {
