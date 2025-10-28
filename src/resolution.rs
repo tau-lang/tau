@@ -9,11 +9,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 #[derive(Debug)]
 pub struct Resolution<'a> {
     types: &'a TypeNames,
-    // Current scopes is the list of all scopes we visited once. The map contains all
-    // variable names mapped to its type.
-    scopes: Vec<Rc<RefCell<TypeNames>>>,
     // Current scope is the list of the scope we are currently in and all scopes above it.
-    current_scope: Vec<Rc<RefCell<TypeNames>>>,
+    scopes: Vec<Rc<RefCell<TypeNames>>>,
     return_type: Option<Rc<TypeDef>>,
 }
 
@@ -21,8 +18,7 @@ impl<'a> Resolution<'a> {
     pub fn new(types: &'a TypeNames, fields: TypeNames) -> Resolution<'a> {
         Resolution {
             types,
-            scopes: Vec::new(),
-            current_scope: vec![Rc::new(RefCell::new(fields))],
+            scopes: vec![Rc::new(RefCell::new(fields))],
             return_type: None,
         }
     }
@@ -44,7 +40,7 @@ impl<'a> Resolution<'a> {
 
     fn declare_variable(&mut self, var_name: &str, var_type: Rc<TypeDef>) {
         assert!(
-            (*self.current_scope.last_mut().expect("expected scope"))
+            (*self.scopes.last_mut().expect("expected scope"))
                 .borrow_mut()
                 .insert(var_name.to_string(), var_type)
                 .is_none()
@@ -52,13 +48,13 @@ impl<'a> Resolution<'a> {
     }
 
     fn lookup_variable(&mut self, var_name: &str) -> Rc<TypeDef> {
-        if let Some(scope) = self.current_scope.last() {
+        if let Some(scope) = self.scopes.last() {
             if let Some(v) = scope.borrow().get(var_name) {
                 v.clone()
             } else {
-                let origin = self.current_scope.pop().expect("expected scope");
+                let origin = self.scopes.pop().expect("expected scope");
                 let var_type = self.lookup_variable(var_name);
-                self.current_scope.push(origin);
+                self.scopes.push(origin);
                 var_type
             }
         } else {
@@ -89,11 +85,21 @@ impl<'a> Resolution<'a> {
         }
     }
 
-    fn get_member(&self, struct_type: Rc<TypeDef>, member_name: &'a str) -> Rc<TypeDef> {
-        if let TypeDef::Struct { name: _, members } = struct_type.as_ref() {
+    fn get_member(&self, lookup: Rc<TypeDef>, member_name: &'a str) -> Rc<TypeDef> {
+        if let TypeDef::Struct { name: _, members } = lookup.as_ref() {
             let ref_type: Rc<TypeDef> = members
                 .get(member_name)
                 .expect("expected struct contains field")
+                .clone();
+            if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
+                self.get_type(&lazy_name)
+            } else {
+                ref_type
+            }
+        } else if let TypeDef::Module { types: _, fields } = lookup.as_ref() {
+            let ref_type = fields
+                .get(member_name)
+                .expect("expected modue contains field")
                 .clone();
             if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
                 self.get_type(&lazy_name)
@@ -107,12 +113,11 @@ impl<'a> Resolution<'a> {
 
     fn begin_scope(&mut self) {
         let ref_counter = Rc::new(RefCell::new(HashMap::new()));
-        self.current_scope.push(ref_counter.clone());
         self.scopes.push(ref_counter);
     }
 
     fn end_scope(&mut self) {
-        self.current_scope.pop().expect("expect end scope");
+        self.scopes.pop().expect("expect end scope");
     }
 }
 
@@ -189,14 +194,13 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
     fn visit_get(
         &mut self,
         left: &'a Rc<Expr>,
-        right: &'a Token,
+        right: &'a Identifier,
         lookup: &'a TypeCell,
     ) -> Rc<TypeDef> {
         let l = self.visit_expr(left);
-        let r = right.identifier();
-        let ref_type = self.get_member(l, r);
-        *lookup.borrow_mut() = ref_type.clone();
-        ref_type
+        *lookup.borrow_mut() = l.clone();
+        let r = right.get_name();
+        self.get_member(l, r)
     }
 
     fn visit_index(
@@ -401,7 +405,7 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef>>> for Resolution<'a> {
 }
 
 impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
-    fn visit_import(&mut self, _: &Token) {}
+    fn visit_import(&mut self, _: &[Identifier]) {}
 
     fn visit_struct(
         &mut self,
@@ -415,7 +419,7 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
             .get(name.get_name())
             .expect("expected to find own struct name when trying to reference self")
             .clone();
-        (*self.current_scope.last_mut().expect("expected scope"))
+        (*self.scopes.last_mut().expect("expected scope"))
             .borrow_mut()
             .insert("self".to_string(), struct_type);
         for (_, member_type) in members {

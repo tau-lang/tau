@@ -44,7 +44,7 @@ pub enum Expr {
     },
     Get {
         left: Rc<Expr>,
-        right: Token,
+        right: Identifier,
         lookup: TypeCell,
     },
     Index {
@@ -127,7 +127,7 @@ pub trait ExprVisitor<'a, T> {
 
     fn visit_binary(&mut self, left: &'a Rc<Expr>, operator: &'a Token, right: &'a Rc<Expr>) -> T;
 
-    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &'a Token, lookup: &'a TypeCell) -> T;
+    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &'a Identifier, lookup: &'a TypeCell) -> T;
 
     fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>, lookup: &'a TypeCell)
     -> T;
@@ -238,7 +238,7 @@ pub trait StmtVisitor<'a, T> {
 
 #[derive(Debug)]
 pub enum Decl {
-    Import(Token),
+    Import(Vec<Identifier>),
     Struct {
         name: Identifier,
         fields: Vec<(Identifier, TypeCell)>,
@@ -282,7 +282,7 @@ pub trait DeclVisitor<'a, T> {
         }
     }
 
-    fn visit_import(&mut self, name: &'a Token) -> T;
+    fn visit_import(&mut self, path: &'a [Identifier]) -> T;
 
     fn visit_struct(
         &mut self,

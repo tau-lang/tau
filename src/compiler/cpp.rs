@@ -2,8 +2,7 @@ use crate::{
     ast::{Decl, DeclVisitor, Expr, ExprVisitor, Identifier, Stmt, StmtVisitor},
     compiler::Generator,
     lexer::{Token, TokenType},
-    typing::TypeCell,
-    typing::TypeDef,
+    typing::{TypeCell, TypeDef},
 };
 use std::{fs::File, io::Error, io::prelude::*, path::PathBuf, rc::Rc};
 
@@ -40,7 +39,11 @@ pub fn to_cpp_type<'a>(type_def: &TypeDef) -> String {
             "void" => "void",
             _ => panic!(),
         }),
-        TypeDef::Unknown => panic!(),
+        TypeDef::Module {
+            types: _,
+            fields: _,
+        }
+        | TypeDef::Unknown => panic!(),
     }
 }
 
@@ -48,6 +51,7 @@ pub fn patch_cpp_name(name: &str) -> &str {
     match name {
         "self" => "this",
         "this" => "$this",
+        "new" => "$new",
         "yield" => "$yield",
         _ => name,
     }
@@ -65,7 +69,7 @@ impl<'a> CppHeaderGenerator {
         let mut builder = String::from("\n\t");
         builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
         builder.push_str(" ");
-        builder.push_str(name.get_name());
+        builder.push_str(patch_cpp_name(name.get_name()));
         builder.push_str("(");
         let mut first = true;
         for (param_name, param_type) in params {
@@ -88,30 +92,41 @@ impl<'a> Generator<'a> for CppHeaderGenerator {
         let mut file = File::create(output)?;
         let mut builder = String::with_capacity(255);
 
-        for decl in declarations {
-            builder.push_str(&self.visit_decl(decl));
-        }
-
-        let os_str = output
-            .file_name()
-            .expect("expect path has filename")
-            .to_ascii_uppercase();
+        let file_name = output.file_name().expect("expect path has filename");
+        let os_str = file_name.to_ascii_uppercase();
         let makro_name = os_str
             .to_str()
             .expect("expect filename is UTF-8")
             .replace(".", "_");
+        let module_name = file_name
+            .to_str()
+            .expect("expect filename is UTF-8")
+            .replace(".hpp", "")
+            .replace("/", "_");
+
+        for decl in declarations {
+            builder.push_str(&self.visit_decl(decl));
+        }
         write!(
             file,
-            "#ifndef {}\n#define {} 1\n\n{}\n#endif",
-            makro_name, makro_name, builder
+            "#ifndef {}\n#define {} 1\n\nnamespace {} {{\n{}\n}}\n#endif",
+            makro_name, makro_name, module_name, builder
         )
     }
 }
 
 impl DeclVisitor<'_, String> for CppHeaderGenerator {
-    fn visit_import(&mut self, name: &Token) -> String {
+    fn visit_import(&mut self, path: &[Identifier]) -> String {
         let mut builder = String::from("#include <");
-        builder.push_str(name.identifier());
+        let mut first = true;
+        for name in path {
+            if first {
+                first = false;
+            } else {
+                builder.push_str("/");
+            }
+            builder.push_str(name.get_name());
+        }
         builder.push_str(".hpp>\n");
         builder
     }
@@ -164,7 +179,7 @@ impl DeclVisitor<'_, String> for CppHeaderGenerator {
         }
         builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
         builder.push_str(" ");
-        builder.push_str(name.get_name());
+        builder.push_str(patch_cpp_name(name.get_name()));
         builder.push_str("(");
         if params.len() > 0 {
             let (first_name, first_type) = params.get(0).unwrap();
@@ -194,11 +209,15 @@ impl DeclVisitor<'_, String> for CppHeaderGenerator {
 
 pub struct CppCodeGenerator {
     intendation: usize,
+    main_type: Option<Rc<TypeDef>>,
 }
 
 impl<'a> CppCodeGenerator {
     pub fn new() -> CppCodeGenerator {
-        CppCodeGenerator { intendation: 0 }
+        CppCodeGenerator {
+            intendation: 0,
+            main_type: None,
+        }
     }
 
     fn begin_scope(&mut self) {
@@ -207,6 +226,24 @@ impl<'a> CppCodeGenerator {
 
     fn end_scope(&mut self) {
         self.intendation -= 1;
+    }
+
+    fn generate_main(return_type: Rc<TypeDef>, module_name: &str) -> String {
+        let mut builder = String::from("int main() {\n");
+        let return_type = to_cpp_type(return_type.as_ref());
+        if return_type == "void" {
+            builder.push_str(module_name);
+            builder.push_str("::main();\n");
+            builder.push_str("return 0;\n")
+        } else if return_type == "int" {
+            builder.push_str("return ");
+            builder.push_str(module_name);
+            builder.push_str("::main();\n")
+        } else {
+            panic!("unsupported return type")
+        }
+        builder.push_str("}");
+        builder
     }
 
     fn visit_method(
@@ -221,7 +258,7 @@ impl<'a> CppCodeGenerator {
         let mut builder = String::with_capacity(255);
         builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
         builder.push_str(" ");
-        builder.push_str(self_type.get_name());
+        builder.push_str(patch_cpp_name(self_type.get_name()));
         builder.push_str("::");
         builder.push_str(name.get_name());
         builder.push_str("(");
@@ -255,10 +292,6 @@ impl<'a> CppCodeGenerator {
 impl<'a> Generator<'a> for CppCodeGenerator {
     fn generate(&mut self, ast: &'a [Decl], output: &PathBuf) -> Result<(), Error> {
         let mut builder = String::with_capacity(255);
-        for decl in ast {
-            builder.push_str(&self.visit_decl(decl));
-        }
-
         let mut file = File::create(output)?;
         let mut path_buf = output.clone();
         path_buf.set_extension("hpp");
@@ -267,7 +300,20 @@ impl<'a> Generator<'a> for CppCodeGenerator {
             .expect("expect path has filename")
             .to_str()
             .expect("expect filename is UTF-8");
-        write!(file, "#include \"{}\"\n\n{}", header_file, builder)
+        let module_name = header_file.replace(".hpp", "").replace(".", "_");
+
+        builder.push_str("namespace ");
+        builder.push_str(&module_name);
+        builder.push_str(" {\n");
+        for decl in ast {
+            builder.push_str(&self.visit_decl(decl));
+        }
+        builder.push_str("}\n");
+        if let Some(main_type) = &self.main_type {
+            builder.push_str(&Self::generate_main(main_type.clone(), &module_name));
+        }
+
+        write!(file, "#include \"{}\"\n{}", header_file, builder)
     }
 }
 
@@ -326,8 +372,23 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
         }
     }
 
-    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &Token, _: &TypeCell) -> String {
-        format!("{}->{}", self.visit_expr(left), right.identifier())
+    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &Identifier, lookup: &TypeCell) -> String {
+        let left = self.visit_expr(left);
+        let right = right.get_name();
+        match lookup.borrow().as_ref() {
+            TypeDef::Struct {
+                name: _,
+                members: _,
+            } => format!("{}->{}", left, right),
+            TypeDef::Module {
+                types: _,
+                fields: _,
+            } => format!("{}::{}", left, right),
+            error => panic!(
+                "can only lookup structs and modules, not {:?} at {:?} with {:?}",
+                error, left, right
+            ),
+        }
     }
 
     fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>, _: &TypeCell) -> String {
@@ -383,7 +444,10 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
             panic!("expected created type is a struct");
         }
         builder.push_str(" {");
-        for (_, field_init) in fields {
+        for (field_name, field_init) in fields {
+            builder.push_str(".");
+            builder.push_str(field_name.get_name());
+            builder.push_str(" = ");
             builder.push_str(&self.visit_expr(field_init));
             builder.push_str(", ")
         }
@@ -398,15 +462,29 @@ impl<'a> ExprVisitor<'a, String> for CppCodeGenerator {
         else_branch: &'a Option<Rc<Stmt>>,
         expression_type: &TypeCell,
     ) -> String {
-        let mut builder = String::from("if (");
-        builder.push_str(&self.visit_expr(condition));
-        builder.push_str(") ");
-        builder.push_str(&self.visit_stmt(if_branch));
-        if let Some(branch) = else_branch {
-            builder.push_str("else ");
-            builder.push_str(&self.visit_stmt(branch))
+        if let TypeDef::Unknown = expression_type.borrow().as_ref() {
+            let mut builder = String::from("if (");
+            builder.push_str(&self.visit_expr(condition));
+            builder.push_str(") ");
+            builder.push_str(&self.visit_stmt(if_branch));
+            if let Some(branch) = else_branch {
+                builder.push_str("else ");
+                builder.push_str(&self.visit_stmt(branch))
+            }
+            builder
+        } else {
+            let mut builder = String::from("(");
+            builder.push_str(&self.visit_expr(condition));
+            builder.push_str(" ? ");
+            builder.push_str(&self.visit_stmt(if_branch));
+            builder.push_str(" : ");
+            let else_branch = else_branch
+                .as_ref()
+                .expect("expected else expression exists");
+            builder.push_str(&self.visit_stmt(else_branch));
+            builder.push_str(")");
+            builder
         }
-        builder
     }
 
     fn visit_literal(&mut self, value: &Token) -> String {
@@ -527,8 +605,8 @@ impl<'a> StmtVisitor<'a, String> for CppCodeGenerator {
 }
 
 impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
-    fn visit_import(&mut self, _: &Token) -> String {
-        String::from("")
+    fn visit_import(&mut self, _: &[Identifier]) -> String {
+        String::new()
     }
 
     fn visit_struct(
@@ -571,6 +649,9 @@ impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
         body: &'_ [Stmt],
         is_extern: bool,
     ) -> String {
+        if name.get_name() == "main" {
+            self.main_type = Some(return_type.borrow().clone())
+        }
         if is_extern {
             return String::new();
         }
@@ -578,7 +659,7 @@ impl<'a> DeclVisitor<'a, String> for CppCodeGenerator {
         let mut builder = String::with_capacity(255);
         builder.push_str(&to_cpp_type(return_type.borrow().as_ref()));
         builder.push_str(" ");
-        builder.push_str(name.get_name());
+        builder.push_str(patch_cpp_name(name.get_name()));
         builder.push_str("(");
         if params.len() > 0 {
             let (first_name, first_type) = params.get(0).unwrap();

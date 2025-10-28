@@ -8,6 +8,10 @@ use std::{
 
 #[derive(Debug, PartialEq)]
 pub enum TypeDef {
+    Module {
+        types: TypeNames,
+        fields: TypeNames,
+    },
     Struct {
         name: Identifier,
         members: HashMap<String, Rc<TypeDef>>,
@@ -16,7 +20,6 @@ pub enum TypeDef {
         parameters: Vec<Rc<TypeDef>>,
         return_type: Rc<TypeDef>,
     },
-    Array(Rc<TypeDef>),
     Number {
         name: &'static str,
         size: u8,
@@ -24,6 +27,7 @@ pub enum TypeDef {
         signed: bool,
     },
     Native(&'static str),
+    Array(Rc<TypeDef>),
     Lazy(String),
     Unknown,
 }
@@ -148,6 +152,10 @@ impl TypeDef {
 impl Display for TypeDef {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
         match self {
+            Self::Module {
+                types: _,
+                fields: _,
+            } => formatter.write_str("<module>"),
             Self::Struct { name, members: _ } => formatter.write_str(name.get_name()),
             Self::Function {
                 parameters,

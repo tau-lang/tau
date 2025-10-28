@@ -1,8 +1,9 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 use crate::{
     ast::{Decl, DeclVisitor, Expr, Identifier, Stmt},
-    lexer::Token,
+    lexer::Lexer,
+    parser::Parser,
     typing::{TypeCell, TypeDef, TypeNames},
 };
 
@@ -93,8 +94,27 @@ impl Header {
 }
 
 impl<'a> DeclVisitor<'a, ()> for Header {
-    fn visit_import(&mut self, _: &'a Token) {
-        // TODO: open import file and add imported fields and types here
+    fn visit_import(&mut self, path: &[Identifier]) {
+        let mut module_name = "";
+        let filename = {
+            let mut filename = PathBuf::new();
+            for name in path {
+                filename.push(name.get_name());
+                module_name = name.get_name();
+            }
+            filename.set_extension("tau");
+            filename
+        };
+        let content = fs::read_to_string(filename).expect("Expected to open file");
+        let lexer = Lexer::new(content.chars());
+        let parser = Parser::new(lexer.scan());
+        let ast = parser.parse();
+        let header = Header::new().headers(&ast);
+        let (types, fields) = header.analysed();
+        self.fields.insert(
+            module_name.to_string(),
+            Rc::new(TypeDef::Module { types, fields }),
+        );
     }
 
     fn visit_struct(

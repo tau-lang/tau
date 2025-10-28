@@ -42,9 +42,16 @@ impl Parser {
     }
 
     fn decl_import(&mut self) -> Decl {
-        let next = self.advance();
-        assert!(next.get_type().is_identifer());
-        Decl::Import(next)
+        let mut path = Vec::new();
+        loop {
+            path.push(Identifier::from(self.advance()));
+            if *self.peek().get_type() == TokenType::Dot {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        Decl::Import(path)
     }
 
     fn decl_extern(&mut self) -> Decl {
@@ -339,7 +346,7 @@ impl Parser {
             );
             Expr::Get {
                 left: Rc::new(lhs),
-                right: rhs,
+                right: Identifier::from(rhs),
                 lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
             }
         } else {
