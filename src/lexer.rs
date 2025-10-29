@@ -1,21 +1,26 @@
+use crate::ast::Identifier;
 use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Source {
+    line: u32,
+    column: u32,
+}
+
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Token {
     token_type: TokenType,
-    line: u32,
-    column: u32,
+    source: Source,
 }
 
 impl Token {
     pub fn new(token_type: TokenType, line: u32, column: u32) -> Token {
         Token {
             token_type,
-            line,
-            column,
+            source: Source { line, column },
         }
     }
 
@@ -28,6 +33,26 @@ impl Token {
             TokenType::Identifier(name) => name,
             TokenType::VSelf => "self",
             _ => panic!("expected identifier"),
+        }
+    }
+}
+
+impl From<Token> for Identifier {
+    fn from(token: Token) -> Self {
+        match token.get_type() {
+            TokenType::Identifier(name) => Identifier::new(name.to_string(), token.source),
+            TokenType::VSelf => Identifier::new("self".to_string(), token.source),
+            _ => panic!("token '{:?}' is not a identifier", token),
+        }
+    }
+}
+
+impl From<&Token> for Identifier {
+    fn from(token: &Token) -> Self {
+        if let TokenType::Identifier(name) = token.get_type() {
+            Identifier::new(name.to_string(), token.source.clone())
+        } else {
+            panic!()
         }
     }
 }
@@ -85,13 +110,14 @@ pub enum TokenType {
     Match,
     Let,
     Const,
+    Extern,
     Return,
     Break,
     VSelf,
 
     // Literal
     Bool(bool),
-    Number(i32),
+    Number(f64),
     String(String),
     Identifier(String),
 
@@ -126,12 +152,11 @@ impl Lexer<'_> {
         while !self.is_at_end() {
             self.scan_token();
         }
-        self.add_token(TokenType::Eof);
         self.tokens
     }
 
     fn scan_token(&mut self) {
-        if let Some(c) = self.advance() {
+        let token_type = if let Some(c) = self.advance() {
             match c {
                 '(' => TokenType::ParenLeft,
                 ')' => TokenType::ParenRight,
@@ -169,12 +194,10 @@ impl Lexer<'_> {
                             self.advance();
                         }
                         return self.scan_token();
+                    } else if self.matchc('=') {
+                        TokenType::SetDiv
                     } else {
-                        if self.matchc('=') {
-                            TokenType::SetDiv
-                        } else {
-                            TokenType::Div
-                        }
+                        TokenType::Div
                     }
                 }
                 '&' => {
@@ -257,6 +280,7 @@ impl Lexer<'_> {
             "struct" => TokenType::Struct,
             "fn" => TokenType::Function,
             "const" => TokenType::Const,
+            "extern" => TokenType::Extern,
             "let" => TokenType::Let,
             "if" => TokenType::If,
             "else" => TokenType::Else,
@@ -273,9 +297,17 @@ impl Lexer<'_> {
 
     fn number(&mut self, c: char) -> TokenType {
         let mut text = String::from(c);
-        while !self.is_at_end() && Lexer::is_digit(*self.peek().expect("unexpected eof")) {
-            if let Some(c) = self.advance() {
-                text.push(c);
+        let mut is_float = false;
+        while !self.is_at_end() {
+            let next = *self.peek().expect("unexpected eof");
+            if Lexer::is_digit(next) {
+                text.push(self.advance().expect("unexpected eof, expected digit"));
+            } else if next == '.' {
+                assert!(!is_float);
+                is_float = true;
+                text.push(self.advance().expect("unexpected eof, expected dot"));
+            } else {
+                break;
             }
         }
 

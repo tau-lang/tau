@@ -1,33 +1,24 @@
-use std::collections::HashMap;
-use std::collections::VecDeque;
-use std::rc::Rc;
-
-use crate::ast::DeclVisitor;
-use crate::ast::ExprVisitor;
-use crate::ast::StmtVisitor;
-use crate::ast::{Decl, Expr, Stmt};
-use crate::header::Header;
-use crate::header::TypeDef;
-use crate::lexer::{Token, TokenType};
+use crate::{
+    ast::{Decl, DeclVisitor, Expr, ExprVisitor, Identifier, Stmt, StmtVisitor},
+    lexer::{Token, TokenType},
+    typing::TypeCell,
+    typing::{TypeDef, TypeNames},
+};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Debug)]
 pub struct Resolution<'a> {
-    types: HashMap<&'a str, Rc<TypeDef<'a>>>,
-    // Current scopes is the deque of all scopes we visited once. The map contains all
-    // variable names mapped to its type.
-    all_scopes: VecDeque<HashMap<&'a str, Rc<TypeDef<'a>>>>,
-    // Current scopes is the deque of the scope we are currently in and all scopes above it.
-    current_scopes: VecDeque<HashMap<&'a str, Rc<TypeDef<'a>>>>,
-    return_type: Option<Rc<TypeDef<'a>>>,
+    types: &'a TypeNames,
+    // Current scope is the list of the scope we are currently in and all scopes above it.
+    scopes: Vec<Rc<RefCell<TypeNames>>>,
+    return_type: Option<Rc<TypeDef>>,
 }
 
 impl<'a> Resolution<'a> {
-    pub fn new(header: Header<'a>) -> Resolution<'a> {
-        let (types, fields) = header.analysed();
+    pub fn new(types: &'a TypeNames, fields: TypeNames) -> Resolution<'a> {
         Resolution {
             types,
-            all_scopes: VecDeque::new(),
-            current_scopes: VecDeque::from([fields]),
+            scopes: vec![Rc::new(RefCell::new(fields))],
             return_type: None,
         }
     }
@@ -43,70 +34,73 @@ impl<'a> Resolution<'a> {
         self
     }
 
-    pub fn analysed(
-        self,
-    ) -> (
-        HashMap<&'a str, Rc<TypeDef<'a>>>,
-        VecDeque<HashMap<&'a str, Rc<TypeDef<'a>>>>,
-    ) {
-        (self.types, self.all_scopes)
+    pub fn analysed(self) -> Vec<Rc<RefCell<TypeNames>>> {
+        self.scopes
     }
 
-    fn declare_variable(&mut self, var_name: &'a Token, var_type: Rc<TypeDef<'a>>) {
+    fn declare_variable(&mut self, var_name: &str, var_type: Rc<TypeDef>) {
         assert!(
-            self.current_scopes
-                .back_mut()
-                .expect("expected scope")
-                .insert(var_name.identifier(), var_type)
+            (*self.scopes.last_mut().expect("expected scope"))
+                .borrow_mut()
+                .insert(var_name.to_string(), var_type)
                 .is_none()
         );
     }
 
-    fn lookup_variable(&mut self, var_name: &Token) -> Rc<TypeDef<'a>> {
-        match self.current_scopes.back() {
-            Some(scope) => match scope.get(var_name.identifier()) {
-                Some(v) => v.clone(),
-                _ => {
-                    let origin = self.current_scopes.pop_back().expect("expected scope");
-                    let var_type = self.lookup_variable(var_name);
-                    self.current_scopes.push_back(origin);
-                    var_type
-                }
-            },
-            _ => panic!("could not find variable '{}'", var_name.identifier()),
+    fn lookup_variable(&mut self, var_name: &str) -> Rc<TypeDef> {
+        if let Some(scope) = self.scopes.last() {
+            if let Some(v) = scope.borrow().get(var_name) {
+                v.clone()
+            } else {
+                let origin = self.scopes.pop().expect("expected scope");
+                let var_type = self.lookup_variable(var_name);
+                self.scopes.push(origin);
+                var_type
+            }
+        } else {
+            panic!("could not find variable '{}'", var_name);
         }
     }
 
-    fn get_type(&self, name: &str) -> Rc<TypeDef<'a>> {
-        let ref_type: Rc<TypeDef<'a>> = self
+    fn get_type(&self, name: &str) -> Rc<TypeDef> {
+        let ref_type: Rc<TypeDef> = self
             .types
             .get(name)
-            .expect(
-                format!(
+            .unwrap_or_else(|| {
+                panic!(
                     "expected type name does not exist '{}' in {:#?}",
                     name, self
                 )
-                .as_str(),
-            )
+            })
             .clone();
         self.get_ref_type(ref_type)
     }
 
-    fn get_ref_type(&self, ref_type: Rc<TypeDef<'a>>) -> Rc<TypeDef<'a>> {
-        if let TypeDef::Lazy(lazy_name) = *ref_type {
+    fn get_ref_type(&self, ref_type: Rc<TypeDef>) -> Rc<TypeDef> {
+        if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
             self.get_type(lazy_name)
         } else {
             ref_type
         }
     }
 
-    fn get_member(&self, struct_type: Rc<TypeDef<'a>>, member_name: &'a str) -> Rc<TypeDef<'a>> {
-        if let TypeDef::Struct { name: _, members } = &*struct_type {
-            let ref_type: Rc<TypeDef<'a>> = members
+    fn get_member(&self, lookup: Rc<TypeDef>, member_name: &'a str) -> Rc<TypeDef> {
+        if let TypeDef::Struct { name: _, members } = lookup.as_ref() {
+            let ref_type: Rc<TypeDef> = members
                 .get(member_name)
                 .expect("expected struct contains field")
                 .clone();
-            if let TypeDef::Lazy(lazy_name) = *ref_type {
+            if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
+                self.get_type(lazy_name)
+            } else {
+                ref_type
+            }
+        } else if let TypeDef::Module { types: _, fields } = lookup.as_ref() {
+            let ref_type = fields
+                .get(member_name)
+                .expect("expected modue contains field")
+                .clone();
+            if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
                 self.get_type(lazy_name)
             } else {
                 ref_type
@@ -117,17 +111,17 @@ impl<'a> Resolution<'a> {
     }
 
     fn begin_scope(&mut self) {
-        self.current_scopes.push_back(HashMap::new());
+        let ref_counter = Rc::new(RefCell::new(HashMap::new()));
+        self.scopes.push(ref_counter);
     }
 
     fn end_scope(&mut self) {
-        let old_scope = self.current_scopes.pop_back().expect("expect end scope");
-        self.all_scopes.push_front(old_scope);
+        self.scopes.pop().expect("expect end scope");
     }
 }
 
-impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Rc<TypeDef<'a>> {
+impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
+    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Rc<TypeDef> {
         let r = self.visit_expr(right);
         match operator.get_type() {
             TokenType::Not => {
@@ -147,7 +141,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
         left: &'a Rc<Expr>,
         operator: &Token,
         right: &'a Rc<Expr>,
-    ) -> Rc<TypeDef<'a>> {
+    ) -> Rc<TypeDef> {
         let l = self.visit_expr(left);
         let r = self.visit_expr(right);
         match operator.get_type() {
@@ -196,24 +190,37 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
         }
     }
 
-    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &'a Token) -> Rc<TypeDef<'a>> {
+    fn visit_get(
+        &mut self,
+        left: &'a Rc<Expr>,
+        right: &'a Identifier,
+        lookup: &'a TypeCell,
+    ) -> Rc<TypeDef> {
         let l = self.visit_expr(left);
-        let r = right.identifier();
+        *lookup.borrow_mut() = l.clone();
+        let r = right.get_name();
         self.get_member(l, r)
     }
 
-    fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>) -> Rc<TypeDef<'a>> {
+    fn visit_index(
+        &mut self,
+        object: &'a Rc<Expr>,
+        index: &'a Rc<Expr>,
+        looup: &'a TypeCell,
+    ) -> Rc<TypeDef> {
         let l = self.visit_expr(object);
         if let TypeDef::Array(array_type) = &*l {
             let r = self.visit_expr(index);
             assert!(r.is_integer());
-            self.get_ref_type(array_type.clone())
+            let ref_type = self.get_ref_type(array_type.clone());
+            *looup.borrow_mut() = ref_type.clone();
+            ref_type
         } else {
             panic!("expected to index array")
         }
     }
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Rc<TypeDef<'a>> {
+    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Rc<TypeDef> {
         let callee_type = self.visit_expr(callee);
         if let TypeDef::Function {
             parameters,
@@ -223,7 +230,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             for (argument, para_type) in arguments.iter().zip(parameters) {
                 let arg_type = self.visit_expr(argument);
                 assert!(
-                    arg_type.is_castable_to(&*self.get_ref_type(para_type.clone())),
+                    arg_type.is_castable_to(&self.get_ref_type(para_type.clone())),
                     "argument type '{}' supplied to function does not match parameter type '{}'",
                     arg_type,
                     para_type
@@ -237,15 +244,16 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
 
     fn visit_create_array(
         &mut self,
-        array_type: &'a Token,
+        array_type: &'a TypeCell,
         array_size: &'a Option<Rc<Expr>>,
         fields: &'a [Rc<Expr>],
-    ) -> Rc<TypeDef<'a>> {
-        let name = array_type.identifier();
+    ) -> Rc<TypeDef> {
         if let Some(size_expr) = array_size {
             assert!(self.visit_expr(size_expr).is_integer());
         }
-        let ref_type = self.get_type(name);
+        let ref_type = self.get_ref_type(array_type.borrow().clone());
+        *array_type.borrow_mut() = ref_type.clone();
+
         for field in fields {
             assert!(self.visit_expr(field).is_castable_to(&ref_type))
         }
@@ -255,23 +263,19 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
 
     fn visit_create_struct(
         &mut self,
-        struct_name: &'a Token,
-        fields: &'a [(Token, Rc<Expr>)],
-    ) -> Rc<TypeDef<'a>> {
-        let name = struct_name.identifier();
-        let ref_type = if let Some(ref_type) = self.types.get(name) {
-            ref_type.clone()
-        } else {
-            panic!("use of undeclared struct type");
-        };
+        struct_type: &'a TypeCell,
+        fields: &'a [(Identifier, Rc<Expr>)],
+    ) -> Rc<TypeDef> {
+        let ref_type = self.get_ref_type(struct_type.borrow().clone());
 
         for (field_name, field_expr) in fields {
             let field_type = self.visit_expr(field_expr);
-            assert_eq!(
-                self.get_member(ref_type.clone(), field_name.identifier()),
+            assert!(
                 field_type
+                    .is_castable_to(&self.get_member(ref_type.clone(), field_name.get_name()))
             );
         }
+        *struct_type.borrow_mut() = ref_type.clone();
         ref_type
     }
 
@@ -280,12 +284,14 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
         condition: &'a Rc<Expr>,
         if_branch: &'a Rc<Stmt>,
         else_branch: &'a Option<Rc<Stmt>>,
-    ) -> Rc<TypeDef<'a>> {
+        expression_type: &'a TypeCell,
+    ) -> Rc<TypeDef> {
         self.visit_expr(condition);
         if let Some(if_type) = self.visit_stmt(if_branch) {
             if let Some(branch) = else_branch {
                 if let Some(else_type) = self.visit_stmt(branch) {
                     assert_eq!(if_type, else_type);
+                    *expression_type.borrow_mut() = if_type.clone();
                     return if_type;
                 } else {
                     panic!("return type of if branch does not match else branch");
@@ -305,7 +311,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             .clone()
     }
 
-    fn visit_literal(&mut self, value: &Token) -> Rc<TypeDef<'a>> {
+    fn visit_literal(&mut self, value: &Token) -> Rc<TypeDef> {
         self.types
             .get(match value.get_type() {
                 TokenType::Number(_) => "i32",
@@ -317,13 +323,15 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef<'a>>> for Resolution<'a> {
             .clone()
     }
 
-    fn visit_variable(&mut self, name: &Token) -> Rc<TypeDef<'a>> {
-        self.lookup_variable(name)
+    fn visit_variable(&mut self, name: &Identifier, variable_type: &'a TypeCell) -> Rc<TypeDef> {
+        let real_type = self.lookup_variable(name.get_name());
+        *variable_type.borrow_mut() = real_type.clone();
+        real_type
     }
 }
 
-impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Option<Rc<TypeDef<'a>>> {
+impl<'a> StmtVisitor<'a, Option<Rc<TypeDef>>> for Resolution<'a> {
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Option<Rc<TypeDef>> {
         self.begin_scope();
         for stmt in statements {
             assert!(self.return_type.is_none(), "function has already returned");
@@ -335,34 +343,34 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
 
     fn visit_let(
         &mut self,
-        name: &'a Token,
-        var_type: &'a Option<Token>,
+        name: &'a Identifier,
+        var_type: &'a TypeCell,
         initializer: &'a Expr,
-    ) -> Option<Rc<TypeDef<'a>>> {
-        let real_type = self.visit_expr(initializer);
-        if let Some(expected_type) = &*var_type {
-            let ref_type = self.get_type(expected_type.identifier());
+    ) -> Option<Rc<TypeDef>> {
+        let mut real_type = self.visit_expr(initializer);
+        if let TypeDef::Lazy(expected_type) = var_type.borrow().as_ref() {
+            let ref_type = self.get_type(expected_type);
             if real_type.is_castable_to(&ref_type) {
-                self.declare_variable(name, ref_type);
+                real_type = ref_type;
             } else {
                 panic!();
             }
-        } else {
-            self.declare_variable(name, real_type);
         }
+        self.declare_variable(name.get_name(), real_type.clone());
+        *var_type.borrow_mut() = real_type;
         None
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> Option<Rc<TypeDef<'a>>> {
+    fn visit_return(&mut self, value: &'a Expr) -> Option<Rc<TypeDef>> {
         self.return_type = Some(self.visit_expr(value));
         None
     }
 
-    fn visit_break(&mut self) -> Option<Rc<TypeDef<'a>>> {
+    fn visit_break(&mut self) -> Option<Rc<TypeDef>> {
         None
     }
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Option<Rc<TypeDef<'a>>> {
+    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Option<Rc<TypeDef>> {
         self.begin_scope();
         assert!(
             self.visit_expr(condition).is_bool(),
@@ -379,7 +387,7 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
         condition: &'a Expr,
         increment: &'a Expr,
         body: &'a Rc<Stmt>,
-    ) -> Option<Rc<TypeDef<'a>>> {
+    ) -> Option<Rc<TypeDef>> {
         self.begin_scope();
         self.visit_stmt(initializer);
         assert!(self.visit_expr(condition).is_bool());
@@ -390,25 +398,33 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef<'a>>>> for Resolution<'a> {
         None
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Option<Rc<TypeDef<'a>>> {
+    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Option<Rc<TypeDef>> {
         Some(self.visit_expr(expr))
     }
 }
 
 impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
-    fn visit_import(&mut self, _: &Token) {}
+    fn visit_import(&mut self, _: &[Identifier]) {}
 
-    fn visit_struct(&mut self, name: &'a Token, _: &'a [(Token, Token)], methods: &'a [Rc<Decl>]) {
+    fn visit_struct(
+        &mut self,
+        name: &'a Identifier,
+        members: &'a [(Identifier, TypeCell)],
+        methods: &'a [Rc<Decl>],
+    ) {
         self.begin_scope();
         let struct_type = self
             .types
-            .get(name.identifier())
+            .get(name.get_name())
             .expect("expected to find own struct name when trying to reference self")
             .clone();
-        self.current_scopes
-            .back_mut()
-            .expect("expected scope")
-            .insert("self", struct_type);
+        (*self.scopes.last_mut().expect("expected scope"))
+            .borrow_mut()
+            .insert("self".to_string(), struct_type);
+        for (_, member_type) in members {
+            let ref_type = self.get_ref_type(member_type.borrow().clone());
+            *member_type.borrow_mut() = ref_type;
+        }
         for method in methods {
             self.visit_decl(method);
         }
@@ -417,48 +433,47 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
 
     fn visit_function(
         &mut self,
-        _: &'a Token,
-        return_type: &'a Option<Token>,
-        params: &'a [(Token, Token)],
+        _: &'a Identifier,
+        return_type: &'a TypeCell,
+        params: &'a [(Identifier, TypeCell)],
         body: &'a [Stmt],
+        is_extern: bool,
     ) {
         assert!(self.return_type.is_none());
+        let ref_type = self.get_ref_type(return_type.borrow().clone());
+        *return_type.borrow_mut() = ref_type.clone();
         self.begin_scope();
         for (param_name, param_type) in params {
-            self.declare_variable(param_name, self.get_type(param_type.identifier()));
+            let ref_type = self.get_ref_type(param_type.borrow().clone());
+            self.declare_variable(param_name.get_name(), ref_type.clone());
+            *param_type.borrow_mut() = ref_type;
+        }
+        if is_extern {
+            // This function is defined outside of tau, there is no body that we can typecheck.
+            self.end_scope();
+            return;
         }
         for stmt in body {
             self.visit_stmt(stmt);
         }
-        let expected = if let Some(type_name) = return_type {
-            type_name.identifier()
-        } else {
-            "void"
-        };
         let real = self.get_ref_type(
             self.return_type
                 .clone()
                 .unwrap_or_else(|| self.get_type("void")),
         );
         assert!(
-            real.is_castable_to(&self.get_type(expected)),
-            "could not cast {} to {}",
-            real,
-            expected
+            real.is_castable_to(ref_type.as_ref()),
+            "could not cast {}",
+            real
         );
+
         self.return_type = None;
         self.end_scope();
     }
 
-    fn visit_const(
-        &mut self,
-        _: &'a crate::lexer::Token,
-        var_type: &'a crate::lexer::Token,
-        initializer: &'a crate::ast::Expr,
-    ) {
-        assert_eq!(
-            self.get_type(var_type.identifier()),
-            self.visit_expr(initializer)
-        );
+    fn visit_const(&mut self, _: &'a Identifier, var_type: &'a TypeCell, initializer: &'a Expr) {
+        let ref_type = self.get_ref_type(var_type.borrow().clone());
+        assert_eq!(ref_type.clone(), self.visit_expr(initializer));
+        *var_type.borrow_mut() = ref_type;
     }
 }
