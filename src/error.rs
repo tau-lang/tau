@@ -2,7 +2,7 @@ use miette::{Diagnostic, SourceOffset};
 use thiserror::Error;
 
 use crate::{
-    lexer::{Token, TokenType},
+    lexer::{Lexer, Token, TokenType},
     parser::Parser,
 };
 
@@ -32,7 +32,7 @@ pub struct Source {
     pub location: SourceOffset,
 }
 
-pub(crate) fn expected(expected: Expected, parser: &Parser, next: Token) -> Error {
+pub(crate) fn parser_expected(expected: Expected, parser: &Parser, next: Token) -> Error {
     let (line, col) = next.get_offset();
     Error::Parser(Source {
         cause: expected,
@@ -41,7 +41,6 @@ pub(crate) fn expected(expected: Expected, parser: &Parser, next: Token) -> Erro
     })
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Error, Diagnostic, PartialEq)]
 pub enum Expected {
     #[error("Unecpected Token \"{0:?}\", expected one of {1:?}")]
@@ -65,11 +64,6 @@ pub enum Expected {
     #[error("Did not expect a import in this place")]
     NotImport,
 
-    // #[error("Expected {0:?}, found {1:?}")]
-    // Found(Rule, Rule),
-
-    // #[error("Expected one of {0:?}, found {1:?}")]
-    // OneOf(Box<[Rule]>, Rule),
     #[error("Expected Integer, found {0:?}")]
     Int(std::num::ParseIntError),
 
@@ -83,35 +77,6 @@ pub enum Expected {
     Bool,
 }
 
-// pub(crate) fn expected_pair(expected: Expected, pair: &Pair<Rule>) -> Source {
-//     let inpt = pair.get_input();
-//     let (line, col) = pair.line_col();
-//     Source {
-//         cause: expected,
-//         input: inpt.to_string(),
-//         location: SourceOffset::from_location(inpt, line, col),
-//     }
-// }
-
-// #[derive(Error, Debug, PartialEq, Diagnostic)]
-// #[error("type missmatch")]
-// pub struct CheckError {
-//     pub cause: (TokenType, PrimitiveTypes),
-//     #[source_code]
-//     pub input: String,
-//     #[label("expected {:?}, got {:?}", cause.0, cause.1)]
-//     pub location: SourceOffset,
-// }
-// pub fn type_got(expected: PrimitiveTypes, got: PrimitiveTypes, pair: Pair<Rule>) -> CheckError {
-//     let inpt = pair.get_input();
-//     let (line, col) = pair.line_col();
-//     CheckError {
-//         cause: (expected, got),
-//         input: inpt.to_string(),
-//         location: SourceOffset::from_location(inpt, line, col),
-//     }
-// }
-
 #[derive(Error, Debug, PartialEq, Diagnostic)]
 #[error("unexpected token")]
 pub struct LexError {
@@ -122,10 +87,28 @@ pub struct LexError {
     pub location: SourceOffset,
 }
 
+pub(crate) fn lexer_expected(expected: LexErrorVarient, lexer: &Lexer) -> Error {
+    let (line, col) = lexer.location();
+    Error::Lexer(LexError {
+        cause: expected,
+        location: SourceOffset::from_location(lexer.source(), line, col),
+        input: lexer.source(),
+    })
+    // Error::Parser(Source {
+    //     cause: expected,
+    //     location: SourceOffset::from_location(parser.get_source(), line as usize, col as usize),
+    //     input: parser.get_source().to_string(),
+    // })
+}
+
 #[derive(Error, Debug, PartialEq, Diagnostic)]
 pub enum LexErrorVarient {
     #[error("custom lexing error")]
     Custom(String),
-    // #[error("error processing input, expected a {0:?}")]
-    // Parsing(Rule),
+
+    #[error("unexpected EOF, expected {0}")]
+    UnexpectedEoF(String),
+
+    #[error("encountered a second dot in a float")]
+    FloatSecondDot,
 }

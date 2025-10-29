@@ -1,4 +1,5 @@
 use crate::ast::Identifier;
+use crate::error::{LexErrorVarient, Result, lexer_expected};
 use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
@@ -151,7 +152,13 @@ impl Lexer<'_> {
             column: 0,
         }
     }
+    pub(crate) fn location(&self) -> (usize, usize) {
+        (self.line as usize, self.column as usize)
+    }
 
+    pub(crate) fn source(&self) -> String {
+        self.source.clone().collect()
+    }
     pub fn scan(mut self) -> VecDeque<Token> {
         while !self.is_at_end() {
             self.scan_token();
@@ -159,7 +166,7 @@ impl Lexer<'_> {
         self.tokens
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self) -> Result<()> {
         let token_type = if let Some(c) = self.advance() {
             match c {
                 '(' => TokenType::ParenLeft,
@@ -257,7 +264,7 @@ impl Lexer<'_> {
                 '"' => self.string(),
                 _ => {
                     if Lexer::is_digit(c) {
-                        self.number(c)
+                        self.number(c)?
                     } else if Lexer::is_alpha(c) {
                         self.identifier(c)
                     } else {
@@ -269,6 +276,7 @@ impl Lexer<'_> {
             TokenType::Eof
         };
         self.add_token(token_type);
+        Ok(())
     }
 
     fn identifier(&mut self, c: char) -> TokenType {
@@ -299,7 +307,7 @@ impl Lexer<'_> {
         }
     }
 
-    fn number(&mut self, c: char) -> TokenType {
+    fn number(&mut self, c: char) -> Result<TokenType> {
         let mut text = String::from(c);
         let mut is_float = false;
         while !self.is_at_end() {
@@ -307,15 +315,20 @@ impl Lexer<'_> {
             if Lexer::is_digit(next) {
                 text.push(self.advance().expect("unexpected eof, expected digit"));
             } else if next == '.' {
-                assert!(!is_float);
+                if is_float {
+                    return Err(lexer_expected(LexErrorVarient::FloatSecondDot, self));
+                }
                 is_float = true;
-                text.push(self.advance().expect("unexpected eof, expected dot"));
+                text.push(self.advance().ok_or(lexer_expected(
+                    LexErrorVarient::UnexpectedEoF("dot".to_string()),
+                    self,
+                ))?);
             } else {
                 break;
             }
         }
 
-        TokenType::Number(text.parse().unwrap())
+        Ok(TokenType::Number(text.parse().unwrap()))
     }
 
     fn string(&mut self) -> TokenType {
