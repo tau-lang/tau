@@ -22,7 +22,7 @@ mod parser;
 mod resolution;
 mod typing;
 
-fn main() -> crate::error::Result<()> {
+fn main() -> miette::Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => {

@@ -16,7 +16,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: VecDeque<Token>, source: &str) -> Parser {
+    pub fn new(tokens: VecDeque<Token>, source: &str) -> Parser<'_> {
         Parser {
             tokens,
             declarations: Vec::new(),
@@ -82,22 +82,26 @@ impl<'a> Parser<'a> {
 
     fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
         let name = self.advance();
-        assert!(name.get_type().is_identifer(), "{:?}", name);
+        if !name.get_type().is_identifer() {
+            return Err(expected(Expected::Name, self, name));
+        }
 
-        self.consume(&TokenType::ParenLeft);
+        self.consume(&TokenType::ParenLeft)?;
         let mut params = Vec::new();
         while *self.peek().get_type() != TokenType::ParenRight {
             params.push(self.decl_type_def()?);
             if *self.peek().get_type() != TokenType::ParenRight {
-                self.consume(&TokenType::Comma);
+                self.consume(&TokenType::Comma)?;
             }
         }
-        self.consume(&TokenType::ParenRight);
+        self.consume(&TokenType::ParenRight)?;
 
         let return_type = if *self.peek().get_type() == TokenType::Colon {
-            self.consume(&TokenType::Colon);
+            self.consume(&TokenType::Colon)?;
             let type_name = self.advance();
-            assert!(type_name.get_type().is_identifer());
+            if !type_name.get_type().is_identifer() {
+                return Err(expected(Expected::Name, self, type_name));
+            }
             TypeDef::Lazy(type_name.identifier().to_string())
         } else {
             TypeDef::Lazy("void".to_string())
@@ -105,11 +109,11 @@ impl<'a> Parser<'a> {
 
         let mut body = Vec::new();
         if !is_extern {
-            self.consume(&TokenType::BraceLeft);
+            self.consume(&TokenType::BraceLeft)?;
             while *self.peek().get_type() != TokenType::BraceRight {
                 body.push(self.stmt()?);
             }
-            self.consume(&TokenType::BraceRight);
+            self.consume(&TokenType::BraceRight)?;
         }
 
         Ok(Decl::Function {
@@ -138,11 +142,11 @@ impl<'a> Parser<'a> {
 
         let mut methods = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
-            self.consume(&TokenType::Function);
+            self.consume(&TokenType::Function)?;
             methods.push(Rc::new(self.decl_function(false)?));
         }
 
-        self.consume(&TokenType::BraceRight);
+        self.consume(&TokenType::BraceRight)?;
         Ok(Decl::Struct {
             name: Identifier::from(name),
             fields,
@@ -168,7 +172,9 @@ impl<'a> Parser<'a> {
         }
         self.consume(&TokenType::Colon)?;
         let type_name = self.advance();
-        assert!(type_name.get_type().is_identifer(), "{:?}", type_name);
+        if !type_name.get_type().is_identifer() {
+            return Err(expected(Expected::Type, self, type_name));
+        }
         Ok((
             Identifier::from(name),
             RefCell::new(Rc::new(TypeDef::Lazy(type_name.identifier().to_string()))),
@@ -213,12 +219,14 @@ impl<'a> Parser<'a> {
         let var_type = if *self.peek().get_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
             let type_name = self.advance();
-            assert!(type_name.get_type().is_identifer());
+            if !type_name.get_type().is_identifer() {
+                return Err(expected(Expected::Name, self, type_name));
+            }
             TypeDef::Lazy(type_name.identifier().to_string())
         } else {
             TypeDef::Unknown
         };
-        self.consume(&TokenType::Set);
+        self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         Ok(Stmt::Let {
             name: Identifier::from(name),
@@ -420,8 +428,10 @@ impl<'a> Parser<'a> {
         let mut fields = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
             let name = self.advance();
-            assert!(name.get_type().is_identifer(), "{:?}", name);
-            self.consume(&TokenType::Set);
+            if !name.get_type().is_identifer() {
+                return Err(expected(Expected::Name, self, name));
+            }
+            self.consume(&TokenType::Set)?;
             let expr = Rc::new(self.expr()?);
             let field = (Identifier::from(name), expr);
             fields.push(field);
@@ -429,7 +439,7 @@ impl<'a> Parser<'a> {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        self.consume(&TokenType::BraceRight);
+        self.consume(&TokenType::BraceRight)?;
         Ok(Expr::CreateStruct {
             struct_type: RefCell::new(Rc::new(TypeDef::Lazy(struct_name.identifier().to_string()))),
             fields,
@@ -492,13 +502,13 @@ impl<'a> Parser<'a> {
 
     fn consume(&mut self, expected: &TokenType) -> Result<Token> {
         let next = self.advance();
-        assert_eq!(
-            next.get_type(),
-            expected,
-            "expected {:?}, but got {:?}",
-            expected,
-            next
-        );
+        if next.get_type() != expected {
+            return Err(crate::error::expected(
+                Expected::SpecificTokenType(expected.clone(), next.get_type().clone()),
+                self,
+                next,
+            ));
+        }
         Ok(next)
     }
 

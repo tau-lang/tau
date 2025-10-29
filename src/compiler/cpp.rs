@@ -7,7 +7,7 @@ use crate::{
 use std::{
     fmt::{self, Display, Formatter},
     fs::File,
-    io::{Error, prelude::*},
+    io::prelude::*,
     ops::Deref,
     rc::Rc,
 };
