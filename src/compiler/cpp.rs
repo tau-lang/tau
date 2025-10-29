@@ -12,7 +12,7 @@ use std::{
     rc::Rc,
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, PartialEq, Debug)]
 struct CppSourceCode(String);
 
 impl Display for CppSourceCode {
@@ -72,16 +72,20 @@ impl From<&TypeCell> for CppSourceCode {
 
 impl From<&Identifier> for CppSourceCode {
     fn from(identifier: &Identifier) -> Self {
-        CppSourceCode(
-            match identifier.get_name() {
-                "self" => "this",
-                "this" => "$this",
-                "new" => "$new",
-                "yield" => "$yield",
-                name => name,
-            }
-            .to_string(),
-        )
+        CppSourceCode(match identifier.get_name() {
+            "self" => "this".to_string(),
+            name @ ("alignas" | "alignof" | "and" | "and_eq" | "asm" | "atomic_cancel"
+            | "atomic_commit" | "atomic_noexcept" | "auto" | "bitand" | "bitor"
+            | "case" | "catch" | "char8_t" | "char16_t" | "char32_t" | "class"
+            | "compl" | "concept" | "consteval" | "constexpr" | "constinit"
+            | "const_cast" | "continue" | "contract_assert" | "co_await" | "co_return"
+            | "co_yield" | "decltype" | "default" | "delete" | "do" | "double"
+            | "dynamic_cast" | "enum" | "explicit" | "export" | "friend" | "goto"
+            | "inline" | "int" | "long" | "mutable" | "namespace" | "new" | "noexcept"
+            | "not" | "not_eq" | "nullptr" | "operator" | "or" | "or_eq" | "private"
+            | "protected" | "public" | "reflexpr" | "register" | "re") => format!("${}", name),
+            name => name.to_string(),
+        })
     }
 }
 
@@ -568,5 +572,147 @@ impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
         let var_type = CppSourceCode::from(var_type);
         let initializer = self.visit_expr(initializer);
         format!("{var_type} {name} = {initializer};").into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patch_cpp_name() {
+        let expected = vec![
+            "this",
+            "$alignas",
+            "$alignof",
+            "$and",
+            "$and_eq",
+            "$asm",
+            "$atomic_cancel",
+            "$atomic_commit",
+            "$atomic_noexcept",
+            "$auto",
+            "$bitand",
+            "$bitor",
+            "$case",
+            "$catch",
+            "$char8_t",
+            "$char8_t",
+            "$char16_t",
+            "$char32_t",
+            "$class",
+            "$compl",
+            "$concept",
+            "$consteval",
+            "$constexpr",
+            "$constinit",
+            "$const_cast",
+            "$continue",
+            "$contract_assert",
+            "$co_await",
+            "$co_return",
+            "$co_yield",
+            "$decltype",
+            "$default",
+            "$delete",
+            "$do",
+            "$double",
+            "$dynamic_cast",
+            "$enum",
+            "$explicit",
+            "$export",
+            "$friend",
+            "$goto",
+            "$inline",
+            "$int",
+            "$long",
+            "$mutable",
+            "$namespace",
+            "$new",
+            "$noexcept",
+            "$not",
+            "$not_eq",
+            "$nullptr",
+            "$operator",
+            "$or",
+            "$or_eq",
+            "$private",
+            "$protected",
+            "$public",
+            "$reflexpr",
+            "$register",
+            "$re",
+        ]
+        .iter()
+        .map(|name| CppSourceCode::from(name.to_string()))
+        .collect::<Vec<CppSourceCode>>();
+        let names = vec![
+            "self",
+            "alignas",
+            "alignof",
+            "and",
+            "and_eq",
+            "asm",
+            "atomic_cancel",
+            "atomic_commit",
+            "atomic_noexcept",
+            "auto",
+            "bitand",
+            "bitor",
+            "case",
+            "catch",
+            "char8_t",
+            "char8_t",
+            "char16_t",
+            "char32_t",
+            "class",
+            "compl",
+            "concept",
+            "consteval",
+            "constexpr",
+            "constinit",
+            "const_cast",
+            "continue",
+            "contract_assert",
+            "co_await",
+            "co_return",
+            "co_yield",
+            "decltype",
+            "default",
+            "delete",
+            "do",
+            "double",
+            "dynamic_cast",
+            "enum",
+            "explicit",
+            "export",
+            "friend",
+            "goto",
+            "inline",
+            "int",
+            "long",
+            "mutable",
+            "namespace",
+            "new",
+            "noexcept",
+            "not",
+            "not_eq",
+            "nullptr",
+            "operator",
+            "or",
+            "or_eq",
+            "private",
+            "protected",
+            "public",
+            "reflexpr",
+            "register",
+            "re",
+        ]
+        .into_iter()
+        .map(|name| Identifier::from(Token::new(TokenType::Identifier(name.to_string()), 0, 0)));
+        let values = names
+            .map(|name| CppSourceCode::from(&name))
+            .collect::<Vec<CppSourceCode>>();
+        assert_eq!(values, expected);
     }
 }

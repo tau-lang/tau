@@ -73,7 +73,7 @@ mod tests {
     use crate::{
         ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
     };
-    use std::{collections::HashMap, fs};
+    use std::fs;
 
     #[test]
     fn lexer() {
@@ -114,7 +114,7 @@ mod tests {
         let lexer = Lexer::new(content.chars());
         let mut parser = Parser::new(lexer.scan());
         let ast = parser.stmt();
-        let (types, fields) = (HashMap::new(), HashMap::new());
+        let (types, fields) = Header::new().analysed();
         let mut resolution = Resolution::new(&types, fields);
         println!("{:#?}", resolution.visit_stmt(&ast));
     }

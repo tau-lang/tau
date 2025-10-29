@@ -319,7 +319,7 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
                 TokenType::Bool(_) => "bool",
                 _ => unreachable!(),
             })
-            .expect("native type exists")
+            .expect(&format!("expected native type '{:?}' exists", value))
             .clone()
     }
 
