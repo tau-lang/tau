@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "tau-lang"
+name = "tau"
 version = "0.1.0"

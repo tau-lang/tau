@@ -1,8 +1,6 @@
-Tau Lang
-========
+# Tau
 
-Syntax
-------
+## Syntax
 
 ### Example
 

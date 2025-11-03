@@ -59,7 +59,7 @@
           };
           packages = {
             default = rustPlatform.buildRustPackage rec {
-              pname = "tau-lang";
+              pname = "tau";
               version = "0.1.0";
               src = ./.;
               cargoLock.lockFile = ./Cargo.lock;
