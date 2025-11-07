@@ -1,49 +1,21 @@
-# Tau
+<div align="center">
+  <h1>Tau</h1>
+</div>
 
-## Syntax
+This is the main source code repository for Tau. It contains the experimental compiler.
 
-### Example
+## Quickstart
 
-```
-fn fname(pname: pytpe): rtype {
-  fn iname(): rtype {
-
-  }
-
-  let vname: vtype = ...
-
-  return ...
-}
-
-struct SName {
-  pname: ptype
-  ...
-}
-
-fn main(): () {
-  if ... {
-
-  } else if ... {
-
-  } else {
-
-  }
-
-  while ... {
-
-  }
-
-  match ... {
-    Some
-    None
-  }
-
-}
-
+```sh
+nix run github:tau-lang/tau
 ```
 
-### Keywords
+## Contributing
 
-```rust
-fn struct enum let return break if else while for match import :: = + - * / % -> : { } ( )
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Tau is licensed under the EUPL.
+
+See [LICENSE](LICENSE) for details.
