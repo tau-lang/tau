@@ -581,6 +581,8 @@ impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
 
 #[cfg(test)]
 mod tests {
+    use crate::lexer::Source;
+
     use super::*;
 
     #[test]
@@ -713,7 +715,12 @@ mod tests {
             "re",
         ]
         .into_iter()
-        .map(|name| Identifier::from(Token::new(TokenType::Identifier(name.to_string()), 0, 0)));
+        .map(|name| {
+            Identifier::from(Token::new(
+                TokenType::Identifier(name.to_string()),
+                Source::default(),
+            ))
+        });
         let values = names
             .map(|name| CppSourceCode::from(&name))
             .collect::<Vec<CppSourceCode>>();

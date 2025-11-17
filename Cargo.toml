@@ -11,4 +11,4 @@ rust-version = "1.85"
 
 [dependencies]
 thiserror = "2.0.17"
-miette = { version = "7.6.0", features = ["fancy"] }
+# miette = { version = "7.6.0", features = ["fancy"] }

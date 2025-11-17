@@ -11,7 +11,7 @@ use crate::{
     parser::Parser,
     resolution::Resolution,
 };
-use std::{collections::HashMap, env, fs, io};
+use std::{collections::HashMap, env, fs, io, path::PathBuf, rc::Rc, str::FromStr};
 
 mod ast;
 mod compiler;
@@ -22,13 +22,13 @@ mod parser;
 mod resolution;
 mod typing;
 
-fn main() -> miette::Result<()> {
+fn main() -> error::Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.len() {
         1 => {
             let mut buffer = String::new();
             while io::stdin().read_line(&mut buffer).is_ok() {
-                let lexer = Lexer::new(buffer.chars());
+                let lexer = Lexer::new(buffer.chars(), Rc::new(PathBuf::new()));
                 let tokens = lexer.scan();
                 // Check if user pressed ^D
                 if tokens.len() > 1 {
@@ -47,7 +47,10 @@ fn main() -> miette::Result<()> {
         2 => {
             let filename = args.get(1).unwrap();
             let content = fs::read_to_string(filename).expect("Expected to open file");
-            let lexer = Lexer::new(content.chars());
+            let lexer = Lexer::new(
+                content.chars(),
+                Rc::new(PathBuf::from_str(filename).unwrap()),
+            );
             let parser = Parser::new(lexer.scan(), &content);
             let ast = parser.parse()?;
             let header = Header::new().headers(&ast);
@@ -74,18 +77,20 @@ mod tests {
         ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
     };
     use std::fs;
+    use std::path::PathBuf;
+    use std::rc::Rc;
 
     #[test]
     fn lexer() {
         let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
-        let lexer = Lexer::new(content.chars());
+        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
         println!("{:?}", lexer.scan());
     }
 
     #[test]
     fn parse_expr() {
         let content = "(1+a[0]) * hypo(3, 4)";
-        let lexer = Lexer::new(content.chars());
+        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
         let mut parser = Parser::new(lexer.scan(), content);
         println!("{:?}", parser.expr());
     }
@@ -93,7 +98,7 @@ mod tests {
     #[test]
     fn parse_stmt() {
         let content = "{ let a = 1 if (a < 2) break }";
-        let lexer = Lexer::new(content.chars());
+        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
         let mut parser = Parser::new(lexer.scan(), content);
         println!("{:?}", parser.stmt());
     }
@@ -101,7 +106,7 @@ mod tests {
     #[test]
     fn header_file() {
         let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
-        let lexer = Lexer::new(content.chars());
+        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
         let parser = Parser::new(lexer.scan(), &content);
         let ast = parser.parse().unwrap();
         let header = Header::new();
@@ -111,7 +116,7 @@ mod tests {
     #[test]
     fn resolve_stmt() {
         let content = "{ let a = 2 if (a < 2) break }";
-        let lexer = Lexer::new(content.chars());
+        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
         let mut parser = Parser::new(lexer.scan(), content);
         let ast = parser.stmt().unwrap();
         let (types, fields) = Header::new().analysed();

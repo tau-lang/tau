@@ -1,6 +1,6 @@
 use crate::{
     ast::{Decl, Expr, Identifier, Stmt},
-    error::{Expected, Result, parser_expected},
+    error::{ParserError, Result, parser_expected},
     lexer::{Token, TokenType},
     typing::TypeDef,
 };
@@ -24,9 +24,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn get_source(&self) -> &'a str {
-        self.source
-    }
+    // pub fn get_source(&self) -> &'a str {
+    //     self.source
+    // }
 
     pub fn parse(mut self) -> Result<Vec<Decl>> {
         while self.has_next() {
@@ -40,7 +40,7 @@ impl<'a> Parser<'a> {
         let token = self.advance();
         if token.get_type() == &TokenType::Eof {
             return Err(parser_expected(
-                Expected::UnexpectedToken(TokenType::Eof, "any other token".to_string()),
+                ParserError::UnexpectedToken(TokenType::Eof, "any other token".to_string()),
                 self,
                 token,
             ));
@@ -52,7 +52,10 @@ impl<'a> Parser<'a> {
             TokenType::Struct => self.decl_struct(),
             TokenType::Const => self.decl_const(),
             t => Err(parser_expected(
-                Expected::UnexpectedToken(t.clone(), "import, function, struct, const".to_string()),
+                ParserError::UnexpectedToken(
+                    t.clone(),
+                    "import, function, struct, const".to_string(),
+                ),
                 self,
                 token,
             )),
@@ -83,7 +86,7 @@ impl<'a> Parser<'a> {
     fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected(Expected::Name, self, name));
+            return Err(parser_expected(ParserError::Name, self, name));
         }
 
         self.consume(&TokenType::ParenLeft)?;
@@ -100,7 +103,7 @@ impl<'a> Parser<'a> {
             self.consume(&TokenType::Colon)?;
             let type_name = self.advance();
             if !type_name.get_type().is_identifer() {
-                return Err(parser_expected(Expected::Name, self, type_name));
+                return Err(parser_expected(ParserError::Name, self, type_name));
             }
             TypeDef::Lazy(type_name.identifier().to_string())
         } else {
@@ -128,7 +131,7 @@ impl<'a> Parser<'a> {
     fn decl_struct(&mut self) -> Result<Decl> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected(Expected::Name, self, name));
+            return Err(parser_expected(ParserError::Name, self, name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
@@ -168,12 +171,12 @@ impl<'a> Parser<'a> {
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected(Expected::Type, self, name));
+            return Err(parser_expected(ParserError::Type, self, name));
         }
         self.consume(&TokenType::Colon)?;
         let type_name = self.advance();
         if !type_name.get_type().is_identifer() {
-            return Err(parser_expected(Expected::Type, self, type_name));
+            return Err(parser_expected(ParserError::Type, self, type_name));
         }
         Ok((
             Identifier::from(name),
@@ -214,13 +217,13 @@ impl<'a> Parser<'a> {
         self.advance();
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected(Expected::Name, self, name));
+            return Err(parser_expected(ParserError::Name, self, name));
         }
         let var_type = if *self.peek().get_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
             let type_name = self.advance();
             if !type_name.get_type().is_identifer() {
-                return Err(parser_expected(Expected::Name, self, type_name));
+                return Err(parser_expected(ParserError::Name, self, type_name));
             }
             TypeDef::Lazy(type_name.identifier().to_string())
         } else {
@@ -293,7 +296,7 @@ impl<'a> Parser<'a> {
             TokenType::ParenLeft => self.expr_grouping()?,
             TokenType::If => self.expr_if()?,
             x => Err(parser_expected(
-                Expected::UnexpectedToken(
+                ParserError::UnexpectedToken(
                     x.clone(),
                     "if, +, -, number, bool, identifier".to_string(),
                 ),
@@ -382,7 +385,7 @@ impl<'a> Parser<'a> {
         if *next.get_type() == TokenType::Dot {
             let rhs = self.advance();
             if !rhs.get_type().is_identifer() {
-                return Err(parser_expected(Expected::Name, self, rhs));
+                return Err(parser_expected(ParserError::Name, self, rhs));
             }
             Ok(Expr::Get {
                 left: Rc::new(lhs),
@@ -427,7 +430,7 @@ impl<'a> Parser<'a> {
         while *self.peek().get_type() != TokenType::BraceRight {
             let name = self.advance();
             if !name.get_type().is_identifer() {
-                return Err(parser_expected(Expected::Name, self, name));
+                return Err(parser_expected(ParserError::Name, self, name));
             }
             self.consume(&TokenType::Set)?;
             let expr = Rc::new(self.expr()?);
@@ -502,7 +505,7 @@ impl<'a> Parser<'a> {
         let next = self.advance();
         if next.get_type() != expected {
             return Err(crate::error::parser_expected(
-                Expected::SpecificTokenType(expected.clone(), next.get_type().clone()),
+                ParserError::SpecificTokenType(expected.clone(), next.get_type().clone()),
                 self,
                 next,
             ));

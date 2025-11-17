@@ -1,13 +1,58 @@
 use crate::ast::Identifier;
-use crate::error::{LexErrorVarient, Result, lexer_expected};
+use crate::error::{LexError, Result, lexer_expected};
 use std::collections::VecDeque;
+use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
+use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
-    line: u32,
-    column: u32,
+    file: Rc<PathBuf>,
+    line: usize,
+    column: usize,
+}
+
+#[cfg(test)]
+impl Default for Source {
+    fn default() -> Self {
+        Source {
+            file: Rc::new(PathBuf::new()),
+            line: 0,
+            column: 0,
+        }
+    }
+}
+
+impl Source {
+    pub fn new(file: Rc<PathBuf>, line: usize, column: usize) -> Source {
+        Source { file, line, column }
+    }
+
+    pub fn file(&self) -> &str {
+        &self.file.to_str().unwrap()
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
+    }
+
+    pub fn column(&self) -> usize {
+        self.column
+    }
+}
+
+impl Display for Source {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(
+            formatter,
+            "{}:{}:{}",
+            self.file.to_string_lossy(),
+            self.line,
+            self.column
+        )
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -18,11 +63,8 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, line: u32, column: u32) -> Token {
-        Token {
-            token_type,
-            source: Source { line, column },
-        }
+    pub fn new(token_type: TokenType, source: Source) -> Token {
+        Token { token_type, source }
     }
 
     pub fn get_type(&self) -> &TokenType {
@@ -37,7 +79,7 @@ impl Token {
         }
     }
     /// (line, column)
-    pub fn get_offset(&self) -> (u32, u32) {
+    pub fn get_offset(&self) -> (usize, usize) {
         (self.source.line, self.source.column)
     }
 }
@@ -139,14 +181,16 @@ impl TokenType {
 pub struct Lexer<'a> {
     source: Peekable<Chars<'a>>,
     tokens: VecDeque<Token>,
-    line: u32,
-    column: u32,
+    file: Rc<PathBuf>,
+    line: usize,
+    column: usize,
 }
 
 impl Lexer<'_> {
-    pub fn new(source: Chars<'_>) -> Lexer<'_> {
+    pub fn new(source: Chars<'_>, file: Rc<PathBuf>) -> Lexer<'_> {
         Lexer {
             source: source.peekable(),
+            file,
             tokens: VecDeque::new(),
             line: 1,
             column: 0,
@@ -316,11 +360,11 @@ impl Lexer<'_> {
                 text.push(self.advance().expect("unexpected eof, expected digit"));
             } else if next == '.' {
                 if is_float {
-                    return Err(lexer_expected(LexErrorVarient::FloatSecondDot, self));
+                    return Err(lexer_expected(LexError::FloatSecondDot, self));
                 }
                 is_float = true;
                 text.push(self.advance().ok_or(lexer_expected(
-                    LexErrorVarient::UnexpectedEoF("dot".to_string()),
+                    LexError::UnexpectedEoF("dot".to_string()),
                     self,
                 ))?);
             } else {
@@ -386,8 +430,11 @@ impl Lexer<'_> {
         self.source.next()
     }
 
+    fn make_source(&self) -> Source {
+        Source::new(self.file.clone(), self.line, self.column)
+    }
     fn add_token(&mut self, token_type: TokenType) {
         self.tokens
-            .push_back(Token::new(token_type, self.line, self.column))
+            .push_back(Token::new(token_type, self.make_source()))
     }
 }
