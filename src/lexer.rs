@@ -1,5 +1,5 @@
 use crate::ast::Identifier;
-use crate::error::{LexError, Result, lexer_expected};
+use crate::error::{Diagnostic, Error, LexError, Result, lexer_expected};
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
@@ -78,9 +78,8 @@ impl Token {
             _ => panic!("expected identifier"),
         }
     }
-    /// (line, column)
-    pub fn get_offset(&self) -> (usize, usize) {
-        (self.source.line, self.source.column)
+    pub fn get_source(&self) -> Source {
+        self.source.clone()
     }
 }
 
@@ -197,17 +196,28 @@ impl Lexer<'_> {
         }
     }
     pub(crate) fn location(&self) -> (usize, usize) {
-        (self.line as usize, self.column as usize)
+        (self.line, self.column)
+    }
+
+    pub(crate) fn file(&self) -> Rc<PathBuf> {
+        self.file.clone()
     }
 
     pub(crate) fn source(&self) -> String {
         self.source.clone().collect()
     }
-    pub fn scan(mut self) -> VecDeque<Token> {
+    pub fn scan(mut self) -> Result<VecDeque<Token>> {
+        let mut error = Vec::new();
         while !self.is_at_end() {
-            self.scan_token();
+            if let Err(e) = self.scan_token() {
+                error.push(e);
+            }
         }
-        self.tokens
+        if !error.is_empty() {
+            Err(error.into_iter().reduce(|a, b| a.concat(b)).unwrap())
+        } else {
+            Ok(self.tokens)
+        }
     }
 
     fn scan_token(&mut self) -> Result<()> {
@@ -312,7 +322,10 @@ impl Lexer<'_> {
                     } else if Lexer::is_alpha(c) {
                         self.identifier(c)
                     } else {
-                        panic!("Unexpected character '{}'.", c)
+                        Err(Error::new(vec![Diagnostic::new(
+                            format!("unexpected character '{}'", c),
+                            self.make_source(),
+                        )]))?
                     }
                 }
             }

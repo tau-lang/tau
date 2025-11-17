@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     error,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
 };
 use thiserror::Error;
 
@@ -14,14 +14,13 @@ use std::path::Path;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+// FIX: this is not optimal, since i am using the same type for the msg and the cause (that i
+// am not creating here)
 pub(crate) fn parser_expected(expected: ParserError, parser: &Parser, next: Token) -> Error {
-    // let (line, col) = next.get_offset();
-    todo!()
-    // Error::Parser(Source {
-    //     cause: expected,
-    //     location: SourceOffset::from_location(parser.get_source(), line as usize, col as usize),
-    //     input: parser.get_source().to_string(),
-    // })
+    Error::new(vec![Diagnostic::new(
+        expected.to_string(),
+        next.get_source(),
+    )])
 }
 //
 #[derive(Debug, Error, PartialEq)]
@@ -80,17 +79,10 @@ pub enum ParserError {
 
 pub(crate) fn lexer_expected(expected: LexError, lexer: &Lexer) -> Error {
     let (line, col) = lexer.location();
-    todo!()
-    // Error::Lexer(LexError {
-    //     cause: expected,
-    //     location: SourceOffset::from_location(lexer.source(), line, col),
-    //     input: lexer.source(),
-    // })
-    // Error::Parser(Source {
-    //     cause: expected,
-    //     location: SourceOffset::from_location(parser.get_source(), line as usize, col as usize),
-    //     input: parser.get_source().to_string(),
-    // })
+    Error::new(vec![Diagnostic::new(
+        expected.to_string(),
+        Source::new(lexer.file(), line, col),
+    )])
 }
 
 const RESET: &str = "\x1b[0m";
@@ -113,21 +105,33 @@ fn nth_line<P: AsRef<Path>>(path: P, n: usize) -> io::Result<Option<String>> {
     Ok(None) // File had fewer than n lines
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Error(Vec<Diagnostic>);
 
 impl Error {
     pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
-        Error { 0: diagnostics }
+        Error(diagnostics)
+    }
+    pub fn concat(self, next: Self) -> Self {
+        let mut m = self.0;
+        let mut n = next.0;
+        m.append(&mut n);
+        Error(m)
     }
 }
 
 impl error::Error for Error {}
 
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        std::fmt::Display::fmt(&self, f)
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         for diagnostic in &self.0 {
-            diagnostic.fmt(formatter)?;
+            std::fmt::Display::fmt(diagnostic, formatter)?;
         }
         Ok(())
     }
@@ -177,7 +181,7 @@ impl Diagnostic {
 impl Display for Diagnostic {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         if let Some(cause) = &self.cause {
-            cause.fmt(formatter)?;
+            std::fmt::Display::fmt(cause, formatter)?;
         }
         write!(
             formatter,

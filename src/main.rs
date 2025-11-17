@@ -29,7 +29,7 @@ fn main() -> error::Result<()> {
             let mut buffer = String::new();
             while io::stdin().read_line(&mut buffer).is_ok() {
                 let lexer = Lexer::new(buffer.chars(), Rc::new(PathBuf::new()));
-                let tokens = lexer.scan();
+                let tokens = lexer.scan()?;
                 // Check if user pressed ^D
                 if tokens.len() > 1 {
                     let mut parser = Parser::new(tokens, &buffer);
@@ -51,7 +51,7 @@ fn main() -> error::Result<()> {
                 content.chars(),
                 Rc::new(PathBuf::from_str(filename).unwrap()),
             );
-            let parser = Parser::new(lexer.scan(), &content);
+            let parser = Parser::new(lexer.scan()?, &content);
             let ast = parser.parse()?;
             let header = Header::new().headers(&ast);
             let (types, fields) = header.analysed();
@@ -91,7 +91,7 @@ mod tests {
     fn parse_expr() {
         let content = "(1+a[0]) * hypo(3, 4)";
         let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let mut parser = Parser::new(lexer.scan(), content);
+        let mut parser = Parser::new(lexer.scan().unwrap(), content);
         println!("{:?}", parser.expr());
     }
 
@@ -99,7 +99,7 @@ mod tests {
     fn parse_stmt() {
         let content = "{ let a = 1 if (a < 2) break }";
         let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let mut parser = Parser::new(lexer.scan(), content);
+        let mut parser = Parser::new(lexer.scan().unwrap(), content);
         println!("{:?}", parser.stmt());
     }
 
@@ -107,7 +107,7 @@ mod tests {
     fn header_file() {
         let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
         let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let parser = Parser::new(lexer.scan(), &content);
+        let parser = Parser::new(lexer.scan().unwrap(), &content);
         let ast = parser.parse().unwrap();
         let header = Header::new();
         println!("{:?}", header.headers(&ast).analysed());
@@ -117,7 +117,7 @@ mod tests {
     fn resolve_stmt() {
         let content = "{ let a = 2 if (a < 2) break }";
         let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let mut parser = Parser::new(lexer.scan(), content);
+        let mut parser = Parser::new(lexer.scan().unwrap(), content);
         let ast = parser.stmt().unwrap();
         let (types, fields) = Header::new().analysed();
         let mut resolution = Resolution::new(&types, fields);
