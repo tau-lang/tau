@@ -2,7 +2,7 @@
   <h1>Tau</h1>
 </div>
 
-This is the main source code repository for Tau. It contains the experimental compiler.
+This is the main source code repository for Tau. It contains the compiler.
 
 ## Quickstart
 
@@ -16,6 +16,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Tau is licensed under the EUPL.
+Tau is licensed under the EUPLv1.2.
 
 See [LICENSE](LICENSE) for details.
