@@ -1,0 +1,33 @@
+name: "Feature request"
+description: "New feature or request."
+title: "feat: FEATURE NAME"
+labels: ["enhancement"]
+body:
+  - type: "markdown"
+    attributes:
+      value: |
+        <p align="center">
+          <h1>Tau</h1>
+        </p>
+
+        Welcome to Tau. Please replace the **`feat: FEATURE NAME`** template above with a short title summarising what feature you want to see added to Tau.
+
+        ---
+  - type: "textarea"
+    id: "description"
+    attributes:
+      label: "Describe your request"
+      description: "Please include a clear and concise description of what you want to see added to Tau. Consider the following questions: Why should we add this to Tau? Why do we need it? How should the feature behave, e.g. what is the expected output under a given input?"
+    validations:
+      required: true
+  - type: "textarea"
+    id: "additional-context"
+    attributes:
+      label: "Additional context"
+      description: "Add any other context about your request here."
+    validations:
+      required: false
+  - type: "markdown"
+    attributes:
+      value: |
+        ## Thank you for helping improve Tau!
