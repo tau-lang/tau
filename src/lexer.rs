@@ -1,5 +1,5 @@
 use crate::ast::Identifier;
-use crate::error::{Diagnostic, Error, LexError, Result, lexer_expected};
+use crate::error::{Diagnostic, Error, Result, lexer_expected};
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
@@ -31,7 +31,7 @@ impl Source {
     }
 
     pub fn file(&self) -> &str {
-        &self.file.to_str().unwrap()
+        self.file.to_str().unwrap()
     }
 
     pub fn line(&self) -> usize {
@@ -203,9 +203,9 @@ impl Lexer<'_> {
         self.file.clone()
     }
 
-    pub(crate) fn source(&self) -> String {
-        self.source.clone().collect()
-    }
+    // pub(crate) fn source(&self) -> String {
+    //     self.source.clone().collect()
+    // }
     pub fn scan(mut self) -> Result<VecDeque<Token>> {
         let mut error = Vec::new();
         while !self.is_at_end() {
@@ -373,13 +373,13 @@ impl Lexer<'_> {
                 text.push(self.advance().expect("unexpected eof, expected digit"));
             } else if next == '.' {
                 if is_float {
-                    return Err(lexer_expected(LexError::FloatSecondDot, self));
+                    return Err(lexer_expected("found a second dot in the float", self));
                 }
                 is_float = true;
-                text.push(self.advance().ok_or(lexer_expected(
-                    LexError::UnexpectedEoF("dot".to_string()),
-                    self,
-                ))?);
+                text.push(
+                    self.advance()
+                        .ok_or(lexer_expected("found EOF, expected a dot ('.')", self))?,
+                );
             } else {
                 break;
             }

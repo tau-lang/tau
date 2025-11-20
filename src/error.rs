@@ -1,12 +1,11 @@
 use crate::{
-    lexer::{Lexer, Source, Token, TokenType},
+    lexer::{Lexer, Source, Token},
     parser::Parser,
 };
 use std::{
     error,
     fmt::{self, Debug, Display, Formatter},
 };
-use thiserror::Error;
 
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -16,68 +15,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // FIX: this is not optimal, since i am using the same type for the msg and the cause (that i
 // am not creating here)
-pub(crate) fn parser_expected(expected: ParserError, parser: &Parser, next: Token) -> Error {
+pub(crate) fn parser_expected(expected: impl ToString, parser: &Parser, next: Token) -> Error {
     Error::new(vec![Diagnostic::new(
         expected.to_string(),
         next.get_source(),
     )])
 }
-//
-#[derive(Debug, Error, PartialEq)]
-pub enum Expected {
-    #[error(transparent)]
-    Parse(ParserError),
-    #[error(transparent)]
-    Lex(LexError),
-}
-#[derive(Debug, Error, PartialEq)]
-pub enum LexError {
-    #[error("custom lexing error")]
-    Custom(String),
 
-    #[error("unexpected EOF, expected {0}")]
-    UnexpectedEoF(String),
-
-    #[error("encountered a second dot in a float")]
-    FloatSecondDot,
-}
-#[derive(Debug, Error, PartialEq)]
-pub enum ParserError {
-    #[error("Unecpected Token \"{0:?}\", expected one of {1:?}")]
-    UnexpectedToken(TokenType, String),
-    #[error("Expected a specific token (\"{0:?}\"), found \"{1:?}\"")]
-    SpecificTokenType(TokenType, TokenType),
-    #[error("Expected Type, found nothing")]
-    Type,
-    #[error("Expected Name, found nothing")]
-    Name,
-
-    #[error("Expected Import, found nothing")]
-    Import,
-
-    #[error("Expected something, found nothing")]
-    Ast,
-
-    #[error("Did not expect a typedef in this place")]
-    NotTypeDef,
-
-    #[error("Did not expect a import in this place")]
-    NotImport,
-
-    #[error("Expected Integer, found {0:?}")]
-    Int(std::num::ParseIntError),
-
-    #[error("Expected Float, found {0:?}")]
-    Float(std::num::ParseFloatError),
-
-    #[error("Expected Boolean, found {0:?}")]
-    Boolean(String),
-
-    #[error("Expected Boolean, found nothing")]
-    Bool,
-}
-
-pub(crate) fn lexer_expected(expected: LexError, lexer: &Lexer) -> Error {
+pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {
     let (line, col) = lexer.location();
     Error::new(vec![Diagnostic::new(
         expected.to_string(),
@@ -145,7 +90,7 @@ pub struct Diagnostic {
 }
 
 #[derive(Debug)]
-pub struct Cause(Expected, Source);
+pub struct Cause(String, Source);
 
 impl Display for Cause {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
