@@ -18,6 +18,9 @@ impl Identifier {
         Identifier { name, source }
     }
 
+    pub fn get_source(&self) -> Source {
+        self.source.clone()
+    }
     pub fn get_name(&self) -> &str {
         &self.name
     }

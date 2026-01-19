@@ -38,13 +38,23 @@ impl<'a> Resolution<'a> {
         self.scopes
     }
 
-    fn declare_variable(&mut self, var_name: &str, var_type: Rc<TypeDef>) {
-        assert!(
-            (*self.scopes.last_mut().expect("expected scope"))
-                .borrow_mut()
-                .insert(var_name.to_string(), var_type)
-                .is_none()
-        );
+    fn declare_variable(&mut self, var_name: &Identifier, var_type: Rc<TypeDef>) {
+        if (*self
+            .scopes
+            .last_mut()
+            .expect("expected there to be at least one scope"))
+        .borrow_mut()
+        .insert(var_name.to_string(), var_type)
+        .is_some()
+        {
+            unreachable!("should be resolved by the parser beforehand")
+        }
+        // assert!(
+        //     (*self.scopes.last_mut().expect("expected scope"))
+        //         .borrow_mut()
+        //         .insert(var_name.to_string(), var_type)
+        //         .is_none()
+        // );
     }
 
     fn lookup_variable(&mut self, var_name: &str) -> Rc<TypeDef> {
@@ -431,7 +441,7 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
     fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Result<Option<Rc<TypeDef>>> {
         self.begin_scope();
         for stmt in statements {
-            if !self.return_type.is_none() {
+            if self.return_type.is_some() {
                 Err(Error::new(vec![Diagnostic::new(
                     "function has already returned".to_string(),
                     stmt.source(),
@@ -458,7 +468,7 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
                 panic!();
             }
         }
-        self.declare_variable(name.get_name(), real_type.clone());
+        self.declare_variable(name, real_type.clone());
         *var_type.borrow_mut() = real_type;
         Ok(None)
     }
@@ -498,7 +508,12 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
     ) -> Result<Option<Rc<TypeDef>>> {
         self.begin_scope();
         self.visit_stmt(initializer)?;
-        assert!(self.visit_expr(condition)?.is_bool());
+        if !self.visit_expr(condition)?.is_bool() {
+            Err(Error::new(vec![Diagnostic::new(
+                "expected condition in for loop to evaluate to a boolean".to_string(),
+                condition.source(),
+            )]))?
+        }
         // We don't check the return type of the increment expression, because we allow any type
         self.visit_expr(increment)?;
         self.visit_stmt(body)?;
@@ -544,19 +559,24 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
 
     fn visit_function(
         &mut self,
-        _: &'a Identifier,
+        identifier: &'a Identifier,
         return_type: &'a TypeCell,
         params: &'a [(Identifier, TypeCell)],
         body: &'a [Stmt],
         is_extern: bool,
     ) -> Result<()> {
-        assert!(self.return_type.is_none());
+        if self.return_type.is_some() {
+            Err(Error::new(vec![Diagnostic::new(
+                "u stupid.".to_string(),
+                identifier.get_source(),
+            )]))?;
+        }
         let ref_type = self.get_ref_type(return_type.borrow().clone());
         *return_type.borrow_mut() = ref_type.clone();
         self.begin_scope();
         for (param_name, param_type) in params {
             let ref_type = self.get_ref_type(param_type.borrow().clone());
-            self.declare_variable(param_name.get_name(), ref_type.clone());
+            self.declare_variable(param_name, ref_type.clone());
             *param_type.borrow_mut() = ref_type;
         }
         if is_extern {
@@ -572,12 +592,12 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
                 .clone()
                 .unwrap_or_else(|| self.get_type("void")),
         );
-        assert!(
-            real.is_castable_to(ref_type.as_ref()),
-            "could not cast {}",
-            real
-        );
-
+        if !real.is_castable_to(ref_type.as_ref()) {
+            Err(Error::new(vec![Diagnostic::new(
+                format!("could not cast {}", real),
+                identifier.get_source(),
+            )]))?;
+        }
         self.return_type = None;
         self.end_scope();
         Ok(())
@@ -590,7 +610,12 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
         initializer: &'a Expr,
     ) -> Result<()> {
         let ref_type = self.get_ref_type(var_type.borrow().clone());
-        assert_eq!(ref_type.clone(), self.visit_expr(initializer).unwrap());
+        if !(ref_type.clone() == self.visit_expr(initializer).unwrap()) {
+            Err(Error::new(vec![Diagnostic::new(
+                "const does not have the declared type".to_string(),
+                initializer.source(),
+            )]))?;
+        }
         *var_type.borrow_mut() = ref_type;
         Ok(())
     }
