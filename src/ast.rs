@@ -187,11 +187,16 @@ pub struct Stmt {
 }
 
 impl Stmt {
+    pub fn new(source: Source, kind: StmtType) -> Self {
+        Stmt { kind, source }
+    }
+
     pub fn kind(&self) -> &StmtType {
         &self.kind
     }
-    pub fn new(source: Source, kind: StmtType) -> Self {
-        Stmt { kind, source }
+
+    pub fn source(&self) -> &Source {
+        &self.source
     }
 }
 

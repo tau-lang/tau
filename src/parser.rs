@@ -198,10 +198,10 @@ impl<'a> Parser {
                 Ok(Stmt::new(current.get_source(), StmtType::Break))
             }
             TokenType::While => self.stmt_while(),
-            _ => Ok(Stmt::new(
-                peek.get_source(),
-                StmtType::ExprStmt(self.expr()?),
-            )),
+            _ => {
+                let expr = self.expr()?;
+                Ok(Stmt::new(expr.source().clone(), StmtType::ExprStmt(expr)))
+            }
         }
     }
 
@@ -211,9 +211,9 @@ impl<'a> Parser {
         while *self.peek().get_type() != TokenType::BraceRight {
             statements.push(Rc::new(self.stmt()?));
         }
-        self.consume(&TokenType::BraceRight)?;
+        let rhs = self.consume(&TokenType::BraceRight)?;
         Ok(Stmt::new(
-            current.get_source(),
+            Source::union(&current.get_source(), &rhs.get_source()),
             StmtType::Block { statements },
         ))
     }
@@ -240,7 +240,7 @@ impl<'a> Parser {
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         Ok(Stmt::new(
-            current.get_source(),
+            Source::union(&current.get_source(), initializer.source()),
             StmtType::Let {
                 name: Identifier::from(name),
                 var_type: RefCell::new(Rc::new(var_type)),
@@ -256,7 +256,7 @@ impl<'a> Parser {
         self.consume(&TokenType::ParenRight)?;
         let body = Rc::new(self.stmt()?);
         Ok(Stmt::new(
-            current.get_source(),
+            Source::union(&current.get_source(), body.source()),
             StmtType::While { condition, body },
         ))
     }
