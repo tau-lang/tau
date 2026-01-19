@@ -161,8 +161,22 @@ pub trait ExprVisitor<'a, T> {
 }
 
 #[derive(Debug)]
+pub struct Stmt {
+    kind: StmtType,
+    source: Source,
+}
+impl Stmt {
+    pub fn kind(&self) -> &StmtType {
+        &self.kind
+    }
+    pub fn new(source: Source, kind: StmtType) -> Self {
+        Stmt { kind, source }
+    }
+}
+
+#[derive(Debug)]
 #[allow(dead_code)]
-pub enum Stmt {
+pub enum StmtType {
     Block {
         statements: Vec<Rc<Stmt>>,
     },
@@ -190,23 +204,23 @@ pub enum Stmt {
 
 pub trait StmtVisitor<'a, T> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) -> T {
-        match stmt {
-            Stmt::Block { statements } => self.visit_block(statements),
-            Stmt::Let {
+        match stmt.kind() {
+            StmtType::Block { statements } => self.visit_block(&statements),
+            StmtType::Let {
                 name,
                 var_type,
                 initializer,
-            } => self.visit_let(name, var_type, initializer),
-            Stmt::Return { value } => self.visit_return(value),
-            Stmt::Break => self.visit_break(),
-            Stmt::While { condition, body } => self.visit_while(condition, body),
-            Stmt::For {
+            } => self.visit_let(&name, &var_type, &initializer),
+            StmtType::Return { value } => self.visit_return(&value),
+            StmtType::Break => self.visit_break(),
+            StmtType::While { condition, body } => self.visit_while(condition, body),
+            StmtType::For {
                 initializer,
                 condition,
                 increment,
                 body,
             } => self.visit_for(initializer, condition, increment, body),
-            Stmt::ExprStmt(expr) => self.visit_expr_stmt(expr),
+            StmtType::ExprStmt(expr) => self.visit_expr_stmt(expr),
         }
     }
 

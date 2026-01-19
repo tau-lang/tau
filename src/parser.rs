@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Decl, Expr, Identifier, Stmt},
+    ast::{Decl, Expr, Identifier, Stmt, StmtType},
     error::{Result, parser_expected},
     lexer::{Token, TokenType},
     typing::TypeDef,
@@ -197,36 +197,46 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn stmt(&mut self) -> Result<Stmt> {
-        match self.peek().get_type() {
+        let peek = self.peek();
+        match peek.get_type() {
             TokenType::BraceLeft => self.stmt_block(),
             TokenType::Let => self.stmt_let(),
             TokenType::Return => {
-                self.advance();
-                Ok(Stmt::Return {
-                    value: self.expr()?,
-                })
+                let current = self.advance();
+                Ok(Stmt::new(
+                    current.get_source(),
+                    StmtType::Return {
+                        value: self.expr()?,
+                    },
+                ))
             }
             TokenType::Break => {
-                self.advance();
-                Ok(Stmt::Break)
+                let current = self.advance();
+                Ok(Stmt::new(current.get_source(), StmtType::Break))
             }
             TokenType::While => self.stmt_while(),
-            _ => Ok(Stmt::ExprStmt(self.expr()?)),
+            _ => Ok(Stmt::new(
+                peek.get_source(),
+                StmtType::ExprStmt(self.expr()?),
+            )),
         }
     }
 
     fn stmt_block(&mut self) -> Result<Stmt> {
-        self.advance();
+        let current = self.advance();
         let mut statements = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
             statements.push(Rc::new(self.stmt()?));
         }
         self.consume(&TokenType::BraceRight)?;
-        Ok(Stmt::Block { statements })
+        Ok(Stmt::new(
+            current.get_source(),
+            StmtType::Block { statements },
+        ))
     }
 
     fn stmt_let(&mut self) -> Result<Stmt> {
-        self.advance();
+        let current = self.advance();
         let name = self.advance();
         if !name.get_type().is_identifer() {
             return Err(parser_expected(
@@ -251,20 +261,26 @@ impl<'a> Parser<'a> {
         };
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
-        Ok(Stmt::Let {
-            name: Identifier::from(name),
-            var_type: RefCell::new(Rc::new(var_type)),
-            initializer,
-        })
+        Ok(Stmt::new(
+            current.get_source(),
+            StmtType::Let {
+                name: Identifier::from(name),
+                var_type: RefCell::new(Rc::new(var_type)),
+                initializer,
+            },
+        ))
     }
 
     fn stmt_while(&mut self) -> Result<Stmt> {
-        self.advance();
+        let current = self.advance();
         self.consume(&TokenType::ParenLeft)?;
         let condition = self.expr()?;
         self.consume(&TokenType::ParenRight)?;
         let body = Rc::new(self.stmt()?);
-        Ok(Stmt::While { condition, body })
+        Ok(Stmt::new(
+            current.get_source(),
+            StmtType::While { condition, body },
+        ))
     }
 
     pub(crate) fn expr(&mut self) -> Result<Expr> {
@@ -317,7 +333,7 @@ impl<'a> Parser<'a> {
             TokenType::If => self.expr_if()?,
             x => Err(parser_expected(
                 format!(
-                    "found {:?} but expected if, +, - , number, bool or identifier",
+                    "found {:?} but expected if, +, - , number, bool, brace or identifier",
                     x.clone()
                 ),
                 self,
