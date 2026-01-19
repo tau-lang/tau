@@ -548,7 +548,7 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
             .borrow_mut()
             .insert("self".to_string(), struct_type);
         for (_, member_type) in members {
-            let ref_type = self.get_ref_type(member_type.borrow().clone());
+            let ref_type = self.get_ref_type(member_type.borrow().clone())?;
             *member_type.borrow_mut() = ref_type;
         }
         for method in methods {
@@ -572,11 +572,11 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
                 identifier.get_source(),
             )]))?;
         }
-        let ref_type = self.get_ref_type(return_type.borrow().clone());
+        let ref_type = self.get_ref_type(return_type.borrow().clone())?;
         *return_type.borrow_mut() = ref_type.clone();
         self.begin_scope();
         for (param_name, param_type) in params {
-            let ref_type = self.get_ref_type(param_type.borrow().clone());
+            let ref_type = self.get_ref_type(param_type.borrow().clone())?;
             self.declare_variable(param_name, ref_type.clone());
             *param_type.borrow_mut() = ref_type;
         }
@@ -591,8 +591,8 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
         let real = self.get_ref_type(
             self.return_type
                 .clone()
-                .unwrap_or_else(|| self.get_type("void")),
-        );
+                .unwrap_or_else(|| self.get_type("void").unwrap()),
+        )?;
         if !real.is_castable_to(ref_type.as_ref()) {
             Err(Error::new(vec![Diagnostic::new(
                 format!("could not cast {}", real),
@@ -610,7 +610,7 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
         var_type: &'a TypeCell,
         initializer: &'a Expr,
     ) -> Result<()> {
-        let ref_type = self.get_ref_type(var_type.borrow().clone());
+        let ref_type = self.get_ref_type(var_type.borrow().clone())?;
         if !(ref_type.clone() == self.visit_expr(initializer).unwrap()) {
             Err(Error::new(vec![Diagnostic::new(
                 "const does not have the declared type".to_string(),
