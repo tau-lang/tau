@@ -30,7 +30,13 @@ impl Display for Identifier {
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub struct Expr {
+    kind: ExprKind,
+    source: Source,
+}
+
+#[derive(Debug)]
+pub enum ExprKind {
     Unary {
         // -right
         operator: Token,
@@ -80,43 +86,52 @@ pub enum Expr {
     },
 }
 
+impl Expr {
+    pub fn kind(&self) -> &ExprKind {
+        &self.kind
+    }
+    pub fn new(source: Source, kind: ExprKind) -> Self {
+        Self { kind, source }
+    }
+}
+
 pub trait ExprVisitor<'a, T> {
     fn visit_expr(&mut self, expr: &'a Expr) -> T {
-        match expr {
-            Expr::Unary { operator, right } => self.visit_unary(operator, right),
-            Expr::Binary {
+        match expr.kind() {
+            ExprKind::Unary { operator, right } => self.visit_unary(operator, right),
+            ExprKind::Binary {
                 left,
                 operator,
                 right,
             } => self.visit_binary(left, operator, right),
-            Expr::Get {
+            ExprKind::Get {
                 left,
                 right,
                 lookup,
             } => self.visit_get(left, right, lookup),
-            Expr::Index {
+            ExprKind::Index {
                 object,
                 index,
                 lookup,
             } => self.visit_index(object, index, lookup),
-            Expr::Call { callee, arguments } => self.visit_call(callee, arguments),
-            Expr::CreateArray {
+            ExprKind::Call { callee, arguments } => self.visit_call(callee, arguments),
+            ExprKind::CreateArray {
                 array_type,
                 array_size,
                 fields,
             } => self.visit_create_array(array_type, array_size, fields),
-            Expr::CreateStruct {
+            ExprKind::CreateStruct {
                 struct_type,
                 fields,
             } => self.visit_create_struct(struct_type, fields),
-            Expr::If {
+            ExprKind::If {
                 condition,
                 if_branch,
                 else_branch,
                 expression_type,
             } => self.visit_if(condition, if_branch, else_branch, expression_type),
-            Expr::Literal(value) => self.visit_literal(value),
-            Expr::Variable {
+            ExprKind::Literal(value) => self.visit_literal(value),
+            ExprKind::Variable {
                 name,
                 variable_type,
             } => self.visit_variable(name, variable_type),

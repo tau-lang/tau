@@ -1,10 +1,14 @@
 use crate::{
-    ast::{Decl, Expr, Identifier, Stmt, StmtType},
+    ast::{Decl, Expr, ExprKind, Identifier, Stmt, StmtType},
     error::{Result, parser_expected},
     lexer::{Token, TokenType},
     typing::TypeDef,
 };
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{
+    cell::{Ref, RefCell},
+    collections::VecDeque,
+    rc::Rc,
+};
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
@@ -290,7 +294,9 @@ impl<'a> Parser<'a> {
     fn expr_bp(&mut self, min_bp: u8) -> Result<Expr> {
         let next = self.advance();
         let mut lhs = match next.get_type() {
-            TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => Expr::Literal(next),
+            TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => {
+                Expr::new(next.get_source(), ExprKind::Literal(next))
+            }
             TokenType::Identifier(_) => {
                 if *self.peek().get_type() == TokenType::BraceLeft {
                     self.expr_create_struct(next)?
@@ -303,31 +309,43 @@ impl<'a> Parser<'a> {
                         self.expr_create_array(next, None)?
                     } else {
                         let expr = Rc::new(self.expr()?);
-                        self.consume(&TokenType::BracketRight)?;
+                        let current = self.consume(&TokenType::BracketRight)?;
                         if *self.peek().get_type() == TokenType::BraceLeft {
                             self.expr_create_array(next, Some(expr))?
                         } else {
-                            Expr::Index {
-                                object: Rc::new(Expr::Variable {
-                                    name: Identifier::from(next),
-                                    variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-                                }),
-                                index: expr,
-                                lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
-                            }
+                            Expr::new(
+                                current.get_source(),
+                                ExprKind::Index {
+                                    object: Rc::new(Expr::new(
+                                        current.get_source(),
+                                        ExprKind::Variable {
+                                            name: Identifier::from(next),
+                                            variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
+                                        },
+                                    )),
+                                    index: expr,
+                                    lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
+                                },
+                            )
                         }
                     }
                 } else {
-                    Expr::Variable {
-                        name: Identifier::from(next),
-                        variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-                    }
+                    Expr::new(
+                        next.get_source(),
+                        ExprKind::Variable {
+                            name: Identifier::from(next),
+                            variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
+                        },
+                    )
                 }
             }
-            TokenType::VSelf => Expr::Variable {
-                name: Identifier::from(next),
-                variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-            },
+            TokenType::VSelf => Expr::new(
+                next.get_source(),
+                ExprKind::Variable {
+                    name: Identifier::from(next),
+                    variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
+                },
+            ),
             TokenType::Add | TokenType::Sub | TokenType::Not => self.expr_unary(next)?,
             TokenType::ParenLeft => self.expr_grouping()?,
             TokenType::If => self.expr_if()?,
@@ -384,11 +402,14 @@ impl<'a> Parser<'a> {
     fn expr_index(&mut self, lhs: Expr) -> Result<Expr> {
         let rhs = self.expr()?;
         self.consume(&TokenType::BracketRight)?;
-        Ok(Expr::Index {
-            object: Rc::new(lhs),
-            index: Rc::new(rhs),
-            lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
-        })
+        Ok(Expr::new(
+            self.peek().get_source(),
+            ExprKind::Index {
+                object: Rc::new(lhs),
+                index: Rc::new(rhs),
+                lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
+            },
+        ))
     }
 
     fn expr_call(&mut self, lhs: Expr) -> Result<Expr> {
@@ -400,19 +421,25 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(&TokenType::ParenRight)?;
-        Ok(Expr::Call {
-            callee: Rc::new(lhs),
-            arguments,
-        })
+        Ok(Expr::new(
+            self.peek().get_source(),
+            crate::ast::ExprKind::Call {
+                callee: Rc::new(lhs),
+                arguments,
+            },
+        ))
     }
 
     fn expr_unary(&mut self, op: Token) -> Result<Expr> {
         let r_bp = Parser::prefix_binding_power(op.get_type());
         let rhs = self.expr_bp(r_bp)?;
-        Ok(Expr::Unary {
-            operator: op,
-            right: Rc::new(rhs),
-        })
+        Ok(Expr::new(
+            op.get_source(),
+            crate::ast::ExprKind::Unary {
+                operator: op,
+                right: Rc::new(rhs),
+            },
+        ))
     }
 
     fn expr_binary(&mut self, lhs: Expr, bp: u8) -> Result<Expr> {
@@ -426,18 +453,24 @@ impl<'a> Parser<'a> {
                     rhs,
                 ));
             }
-            Ok(Expr::Get {
-                left: Rc::new(lhs),
-                right: Identifier::from(rhs),
-                lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
-            })
+            Ok(Expr::new(
+                next.get_source(),
+                ExprKind::Get {
+                    left: Rc::new(lhs),
+                    right: Identifier::from(rhs),
+                    lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
+                },
+            ))
         } else {
             let rhs = self.expr_bp(bp)?;
-            Ok(Expr::Binary {
-                left: Rc::new(lhs),
-                operator: next,
-                right: Rc::new(rhs),
-            })
+            Ok(Expr::new(
+                next.get_source(),
+                ExprKind::Binary {
+                    left: Rc::new(lhs),
+                    operator: next,
+                    right: Rc::new(rhs),
+                },
+            ))
         }
     }
 
@@ -454,17 +487,22 @@ impl<'a> Parser<'a> {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        self.consume(&TokenType::BraceRight)?;
+        let current = self.consume(&TokenType::BraceRight)?;
 
-        Ok(Expr::CreateArray {
-            array_type: RefCell::new(Rc::new(TypeDef::Lazy(array_type.identifier().to_string()))),
-            array_size,
-            fields,
-        })
+        Ok(Expr::new(
+            current.get_source(),
+            ExprKind::CreateArray {
+                array_type: RefCell::new(Rc::new(TypeDef::Lazy(
+                    array_type.identifier().to_string(),
+                ))),
+                array_size,
+                fields,
+            },
+        ))
     }
 
     fn expr_create_struct(&mut self, struct_name: Token) -> Result<Expr> {
-        self.consume(&TokenType::BraceLeft)?;
+        let current = self.consume(&TokenType::BraceLeft)?;
         let mut fields = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
             let name = self.advance();
@@ -484,14 +522,19 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(&TokenType::BraceRight)?;
-        Ok(Expr::CreateStruct {
-            struct_type: RefCell::new(Rc::new(TypeDef::Lazy(struct_name.identifier().to_string()))),
-            fields,
-        })
+        Ok(Expr::new(
+            current.get_source(),
+            ExprKind::CreateStruct {
+                struct_type: RefCell::new(Rc::new(TypeDef::Lazy(
+                    struct_name.identifier().to_string(),
+                ))),
+                fields,
+            },
+        ))
     }
 
     fn expr_if(&mut self) -> Result<Expr> {
-        self.consume(&TokenType::ParenLeft)?;
+        let current = self.consume(&TokenType::ParenLeft)?;
         let condition = Rc::new(self.expr()?);
         self.consume(&TokenType::ParenRight)?;
         let if_branch = Rc::new(self.stmt()?);
@@ -501,12 +544,15 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Ok(Expr::If {
-            condition,
-            if_branch,
-            else_branch,
-            expression_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-        })
+        Ok(Expr::new(
+            current.get_source(),
+            ExprKind::If {
+                condition,
+                if_branch,
+                else_branch,
+                expression_type: RefCell::new(Rc::new(TypeDef::Unknown)),
+            },
+        ))
     }
 
     fn prefix_binding_power(operator: &TokenType) -> u8 {
