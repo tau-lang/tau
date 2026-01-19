@@ -36,7 +36,7 @@ fn main() -> error::Result<()> {
                     let ast = parser.stmt()?;
                     let (types, fields) = (HashMap::new(), HashMap::new());
                     let mut resolution = Resolution::new(&types, fields);
-                    resolution.visit_stmt(&ast);
+                    resolution.visit_stmt(&ast)?;
                     println!("{:#?}", resolution);
                     buffer.clear();
                 } else {
@@ -56,7 +56,7 @@ fn main() -> error::Result<()> {
             let header = Header::new().headers(&ast);
             let (types, fields) = header.analysed();
             let resolution = Resolution::new(&types, fields).resolve(&ast);
-            let _ = resolution.analysed();
+            let _ = resolution?.analysed();
             let compiler = Compiler::new(&ast);
             let header_output = replace_extension(filename, "hpp");
             compiler.compile(CppHeaderGenerator, &header_output)?;

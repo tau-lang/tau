@@ -61,8 +61,7 @@ impl Display for Source {
     }
 }
 
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     token_type: TokenType,
     source: Source,
@@ -183,6 +182,7 @@ impl TokenType {
     }
 }
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
     source: Peekable<Chars<'a>>,
     tokens: VecDeque<Token>,
@@ -253,7 +253,10 @@ impl Lexer<'_> {
                 }
                 '/' => {
                     if self.matchc('/') {
-                        while !self.is_at_end() && *self.peek().expect("unexpected eof") != '\n' {
+                        let lex: &Lexer = &self.clone();
+                        while !self.is_at_end()
+                            && *self.peek().ok_or(lexer_expected("unexpected EOF", lex))? != '\n'
+                        {
                             self.advance();
                         }
                         return self.scan_token();
@@ -267,7 +270,7 @@ impl Lexer<'_> {
                     if self.matchc('&') {
                         TokenType::And
                     } else {
-                        panic!("Unexpected character.");
+                        Err(lexer_expected("unexpected character", self))?
                     }
                 }
                 '|' => {
@@ -314,12 +317,12 @@ impl Lexer<'_> {
                     self.start = self.offset;
                     return self.scan_token();
                 }
-                '"' => self.string(),
+                '"' => self.string()?,
                 _ => {
                     if Lexer::is_digit(c) {
                         self.number(c)?
                     } else if Lexer::is_alpha(c) {
-                        self.identifier(c)
+                        self.identifier(c)?
                     } else {
                         Err(Error::new(vec![Diagnostic::new(
                             format!("unexpected character '{}'", c),
@@ -335,15 +338,18 @@ impl Lexer<'_> {
         Ok(())
     }
 
-    fn identifier(&mut self, c: char) -> TokenType {
+    fn identifier(&mut self, c: char) -> Result<TokenType> {
         let mut text = String::from(c);
-        while !self.is_at_end() && Lexer::is_alpha_numeric(*self.peek().expect("unexpected eof")) {
+        let lex: &Lexer = &self.clone();
+        while !self.is_at_end()
+            && Lexer::is_alpha_numeric(*self.peek().ok_or(lexer_expected("unexpected EOF", lex))?)
+        {
             if let Some(c) = self.advance() {
                 text.push(c)
             }
         }
 
-        match text.as_str() {
+        Ok(match text.as_str() {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
             "fn" => TokenType::Function,
@@ -360,16 +366,23 @@ impl Lexer<'_> {
             "true" => TokenType::Bool(true),
             "false" => TokenType::Bool(false),
             _ => TokenType::Identifier(text),
-        }
+        })
     }
 
     fn number(&mut self, c: char) -> Result<TokenType> {
         let mut text = String::from(c);
         let mut is_float = false;
         while !self.is_at_end() {
-            let next = *self.peek().expect("unexpected eof");
+            let next = if let Some(next) = self.peek() {
+                *next
+            } else {
+                Err(lexer_expected("unexpected EOF", self))?
+            };
             if Lexer::is_digit(next) {
-                text.push(self.advance().expect("unexpected eof, expected digit"));
+                text.push(
+                    self.advance()
+                        .ok_or(lexer_expected("unexpected EOF, expected a digit", self))?,
+                )
             } else if next == '.' {
                 if is_float {
                     return Err(lexer_expected("found a second dot in the float", self));
@@ -387,9 +400,15 @@ impl Lexer<'_> {
         Ok(TokenType::Number(text.parse().unwrap()))
     }
 
-    fn string(&mut self) -> TokenType {
+    fn string(&mut self) -> crate::error::Result<TokenType> {
         let mut text = String::new();
-        while *self.peek().expect("got eof in unterminated string") != '"' {
+        // FIX:
+        while *self
+            .peek()
+                .unwrap()
+            // .ok_or(lexer_expected("got EOF in unterminated String", self))?
+            != '"'
+        {
             if let Some(c) = self.advance() {
                 if c == '\n' {
                     self.line += 1;
@@ -401,7 +420,7 @@ impl Lexer<'_> {
         // The enclosing ".
         self.advance();
 
-        TokenType::String(text)
+        Ok(TokenType::String(text))
     }
 
     fn matchc(&mut self, c: char) -> bool {

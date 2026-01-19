@@ -1,8 +1,8 @@
 use crate::{
     ast::{Decl, DeclVisitor, Expr, ExprVisitor, Identifier, Stmt, StmtVisitor},
+    error::{Diagnostic, Error, Result},
     lexer::{Token, TokenType},
-    typing::TypeCell,
-    typing::{TypeDef, TypeNames},
+    typing::{TypeCell, TypeDef, TypeNames},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -23,15 +23,15 @@ impl<'a> Resolution<'a> {
         }
     }
 
-    pub fn resolve(mut self, declarations: &'a Vec<Decl>) -> Self {
+    pub fn resolve(mut self, declarations: &'a Vec<Decl>) -> Result<Self> {
         for decl in declarations {
-            self.visit_decl(decl)
+            self.visit_decl(decl)?;
         }
         // When we create a new resolution, we already start in the global scope.
         // After visiting all declarations, we need to end the global scope and
         // push it to all scopes.
         self.end_scope();
-        self
+        Ok(self)
     }
 
     pub fn analysed(self) -> Vec<Rc<RefCell<TypeNames>>> {
@@ -120,17 +120,27 @@ impl<'a> Resolution<'a> {
     }
 }
 
-impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Rc<TypeDef> {
-        let r = self.visit_expr(right);
+impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
+    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Result<Rc<TypeDef>> {
+        let throw_error = |msg: &str| {
+            Err(Error::new(vec![Diagnostic::new(
+                msg.to_string(),
+                operator.get_source(),
+            )]))
+        };
+        let r = self.visit_expr(right)?;
         match operator.get_type() {
             TokenType::Not => {
-                assert!(r.is_bool());
-                r
+                if !r.is_bool() {
+                    throw_error("the value is not a boolean and cannot be negated")?;
+                }
+                Ok(r)
             }
             TokenType::Add | TokenType::Sub => {
-                assert!(r.is_number());
-                r
+                if !r.is_number() {
+                    throw_error("the type is not a number and thus cannot be used like one (+/-)")?;
+                }
+                Ok(r)
             }
             _ => unreachable!("{:?}", operator),
         }
@@ -141,9 +151,15 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
         left: &'a Rc<Expr>,
         operator: &Token,
         right: &'a Rc<Expr>,
-    ) -> Rc<TypeDef> {
-        let l = self.visit_expr(left);
-        let r = self.visit_expr(right);
+    ) -> Result<Rc<TypeDef>> {
+        let throw_error = |msg: &str| {
+            Err(Error::new(vec![Diagnostic::new(
+                msg.to_string(),
+                operator.get_source(),
+            )]))
+        };
+        let l = self.visit_expr(left)?;
+        let r = self.visit_expr(right)?;
         match operator.get_type() {
             TokenType::Add
             | TokenType::Sub
@@ -153,38 +169,58 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
             | TokenType::SetSub
             | TokenType::SetMul
             | TokenType::SetDiv => {
-                assert!(l.is_number());
-                assert!(r.is_number());
-                if l.is_castable_to(&r) {
-                    return r;
-                } else if r.is_castable_to(&l) {
-                    return l;
+                if !l.is_number() {
+                    throw_error("the left-hand-side is expected to be a number")?;
                 }
-                panic!("number types of left and right side do not match");
+                if !r.is_number() {
+                    throw_error("the right-hand-side is expected to be a number")?;
+                }
+                if l.is_castable_to(&r) {
+                    return Ok(r);
+                } else if r.is_castable_to(&l) {
+                    return Ok(l);
+                }
+                throw_error("number types of left and right side do not match")
             }
             TokenType::And | TokenType::Or | TokenType::Xor => {
-                assert!(l.is_bool());
-                assert!(r.is_bool());
-                l
+                if !l.is_bool() {
+                    throw_error("the left-hand-side is expected to be a boolean")?;
+                }
+                if !r.is_bool() {
+                    throw_error("the right-hand-side is expected to be a boolean")?;
+                }
+                Ok(l)
             }
             TokenType::Leq | TokenType::Low | TokenType::Geq | TokenType::Gre => {
-                assert!(l.is_number());
-                assert!(r.is_number());
-                self.get_type("bool")
-            }
-            TokenType::Eq | TokenType::Neq => {
-                if l.is_number() {
-                    assert!(r.is_number());
-                } else {
-                    assert_eq!(l, r);
+                if !l.is_number() {
+                    throw_error("the left-hand-side is expected to be a number")?;
                 }
-                l
+                if !r.is_number() {
+                    throw_error("the right-hand-side is expected to be a number")?;
+                }
+                Ok(self.get_type("bool"))
             }
+            TokenType::Eq | TokenType::Neq => match (l.is_number(), r.is_number()) {
+                (true, true) => Ok(l),
+                (true, false) => throw_error(
+                    "since the left-hand-side is a number, the right-hand-side is expected to be a number too",
+                ),
+                (false, true) => throw_error(
+                    "since the right-hand-side is a number, the left-hand-side is expected to be a number too",
+                ),
+                (false, false) => {
+                    if l == r {
+                        Ok(l)
+                    } else {
+                        throw_error("the types are expected to be the same")
+                    }
+                }
+            },
             TokenType::Set => {
                 if !r.is_castable_to(&l) {
-                    panic!("can not cast right side of set expression to expected var type")
+                    throw_error("can not cast right side of set expression to expected var type")?;
                 }
-                l
+                Ok(l)
             }
             _ => unreachable!("{:?}", operator),
         }
@@ -195,11 +231,11 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
         left: &'a Rc<Expr>,
         right: &'a Identifier,
         lookup: &'a TypeCell,
-    ) -> Rc<TypeDef> {
-        let l = self.visit_expr(left);
+    ) -> Result<Rc<TypeDef>> {
+        let l = self.visit_expr(left)?;
         *lookup.borrow_mut() = l.clone();
         let r = right.get_name();
-        self.get_member(l, r)
+        Ok(self.get_member(l, r))
     }
 
     fn visit_index(
@@ -207,38 +243,56 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
         object: &'a Rc<Expr>,
         index: &'a Rc<Expr>,
         looup: &'a TypeCell,
-    ) -> Rc<TypeDef> {
-        let l = self.visit_expr(object);
+    ) -> Result<Rc<TypeDef>> {
+        let l = self.visit_expr(object)?;
         if let TypeDef::Array(array_type) = &*l {
-            let r = self.visit_expr(index);
-            assert!(r.is_integer());
+            let r = self.visit_expr(index)?;
+            if !r.is_integer() {
+                Err(Error::new(vec![Diagnostic::new(
+                    "index has to be an integer".to_string(),
+                    index.source(),
+                )]))?;
+            }
             let ref_type = self.get_ref_type(array_type.clone());
             *looup.borrow_mut() = ref_type.clone();
-            ref_type
+            Ok(ref_type)
         } else {
-            panic!("expected to index array")
+            Err(Error::new(vec![Diagnostic::new(
+                "expected to index into an array".to_string(),
+                object.source(),
+            )]))
         }
     }
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Rc<TypeDef> {
-        let callee_type = self.visit_expr(callee);
+    fn visit_call(
+        &mut self,
+        callee: &'a Rc<Expr>,
+        arguments: &'a [Rc<Expr>],
+    ) -> Result<Rc<TypeDef>> {
+        let callee_type = self.visit_expr(callee)?;
         if let TypeDef::Function {
             parameters,
             return_type,
         } = &*callee_type
         {
             for (argument, para_type) in arguments.iter().zip(parameters) {
-                let arg_type = self.visit_expr(argument);
-                assert!(
-                    arg_type.is_castable_to(&self.get_ref_type(para_type.clone())),
-                    "argument type '{}' supplied to function does not match parameter type '{}'",
-                    arg_type,
-                    para_type
-                )
+                let arg_type = self.visit_expr(argument)?;
+                if !arg_type.is_castable_to(&self.get_ref_type(para_type.clone())) {
+                    Err(Error::new(vec![Diagnostic::new(
+                        format!(
+                            "argument type '{}' supplied to function does not match parameter type '{}'",
+                            arg_type, para_type
+                        ),
+                        callee.source(),
+                    )]))?;
+                }
             }
-            self.get_ref_type(return_type.clone())
+            Ok(self.get_ref_type(return_type.clone()))
         } else {
-            panic!("expected to call function")
+            Err(Error::new(vec![Diagnostic::new(
+                "expected call a function".to_string(),
+                callee.source(),
+            )]))
         }
     }
 
@@ -247,36 +301,49 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
         array_type: &'a TypeCell,
         array_size: &'a Option<Rc<Expr>>,
         fields: &'a [Rc<Expr>],
-    ) -> Rc<TypeDef> {
+    ) -> Result<Rc<TypeDef>> {
         if let Some(size_expr) = array_size {
-            assert!(self.visit_expr(size_expr).is_integer());
+            if !self.visit_expr(size_expr)?.is_integer() {
+                Err(Error::new(vec![Diagnostic::new(
+                    "expected size of array to be an integer".to_string(),
+                    size_expr.source(),
+                )]))?;
+            }
         }
         let ref_type = self.get_ref_type(array_type.borrow().clone());
         *array_type.borrow_mut() = ref_type.clone();
 
         for field in fields {
-            assert!(self.visit_expr(field).is_castable_to(&ref_type))
+            if !self.visit_expr(field)?.is_castable_to(&ref_type) {
+                Err(Error::new(vec![Diagnostic::new(
+                    "expected size of array to be an integer".to_string(),
+                    field.source(),
+                )]))?;
+            }
         }
 
-        Rc::new(TypeDef::Array(ref_type))
+        Ok(Rc::new(TypeDef::Array(ref_type)))
     }
 
     fn visit_create_struct(
         &mut self,
         struct_type: &'a TypeCell,
         fields: &'a [(Identifier, Rc<Expr>)],
-    ) -> Rc<TypeDef> {
+    ) -> Result<Rc<TypeDef>> {
         let ref_type = self.get_ref_type(struct_type.borrow().clone());
 
         for (field_name, field_expr) in fields {
-            let field_type = self.visit_expr(field_expr);
-            assert!(
-                field_type
-                    .is_castable_to(&self.get_member(ref_type.clone(), field_name.get_name()))
-            );
+            let field_type = self.visit_expr(field_expr)?;
+            if !field_type.is_castable_to(&self.get_member(ref_type.clone(), field_name.get_name()))
+            {
+                Err(Error::new(vec![Diagnostic::new(
+                    "expected size of array to be an integer".to_string(),
+                    field_expr.source(),
+                )]))?;
+            }
         }
         *struct_type.borrow_mut() = ref_type.clone();
-        ref_type
+        Ok(ref_type)
     }
 
     fn visit_if(
@@ -285,34 +352,60 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
         if_branch: &'a Rc<Stmt>,
         else_branch: &'a Option<Rc<Stmt>>,
         expression_type: &'a TypeCell,
-    ) -> Rc<TypeDef> {
-        self.visit_expr(condition);
-        if let Some(if_type) = self.visit_stmt(if_branch) {
-            if let Some(branch) = else_branch {
-                if let Some(else_type) = self.visit_stmt(branch) {
-                    assert_eq!(if_type, else_type);
-                    *expression_type.borrow_mut() = if_type.clone();
-                    return if_type;
+    ) -> Result<Rc<TypeDef>> {
+        self.visit_expr(condition)?;
+        match self.visit_stmt(if_branch) {
+            Ok(None) => Ok(self
+                .types
+                .get("void")
+                .expect("expected native type void exists")
+                .clone()),
+            Ok(Some(if_type)) => {
+                if let Some(else_branch) = else_branch {
+                    match self.visit_stmt(else_branch) {
+                        Ok(Some(else_type)) => {
+                            if if_type != else_type {
+                                Err(Error::new(vec![Diagnostic::new(
+                                    "if branch and else branch have different return types"
+                                        .to_string(),
+                                    if_branch.source(),
+                                )]))?
+                            }
+                            *expression_type.borrow_mut() = if_type.clone();
+                            Ok(if_type)
+                        }
+                        Ok(None) => {
+                            let void = self
+                                .types
+                                .get("void")
+                                .expect("expected native type void exists")
+                                .clone();
+                            if if_type != void {
+                                Err(Error::new(vec![Diagnostic::new(
+                                    "if branch and else branch have different return types"
+                                        .to_string(),
+                                    if_branch.source(),
+                                )]))?
+                            }
+                            Ok(void)
+                        }
+
+                        Err(e) => Err(e),
+                    }
                 } else {
-                    panic!("return type of if branch does not match else branch");
+                    Err(Error::new(vec![Diagnostic::new(
+                        "if expression expected else branch".to_string(),
+                        if_branch.source(),
+                    )]))?
                 }
-            } else {
-                panic!("expression if expected else branch")
             }
+            Err(_) => todo!(),
         }
-        if let Some(branch) = else_branch {
-            if self.visit_stmt(branch).is_some() {
-                panic!("non expressive if has a expressive else branch");
-            }
-        }
-        self.types
-            .get("void")
-            .expect("expected native type void exists")
-            .clone()
     }
 
-    fn visit_literal(&mut self, value: &Token) -> Rc<TypeDef> {
-        self.types
+    fn visit_literal(&mut self, value: &Token) -> Result<Rc<TypeDef>> {
+        Ok(self
+            .types
             .get(match value.get_type() {
                 TokenType::Number(_) => "i32",
                 TokenType::String(_) => "str",
@@ -320,25 +413,34 @@ impl<'a> ExprVisitor<'a, Rc<TypeDef>> for Resolution<'a> {
                 _ => unreachable!(),
             })
             .expect(&format!("expected native type '{:?}' exists", value))
-            .clone()
+            .clone())
     }
 
-    fn visit_variable(&mut self, name: &Identifier, variable_type: &'a TypeCell) -> Rc<TypeDef> {
+    fn visit_variable(
+        &mut self,
+        name: &Identifier,
+        variable_type: &'a TypeCell,
+    ) -> Result<Rc<TypeDef>> {
         let real_type = self.lookup_variable(name.get_name());
         *variable_type.borrow_mut() = real_type.clone();
-        real_type
+        Ok(real_type)
     }
 }
 
-impl<'a> StmtVisitor<'a, Option<Rc<TypeDef>>> for Resolution<'a> {
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Option<Rc<TypeDef>> {
+impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Result<Option<Rc<TypeDef>>> {
         self.begin_scope();
         for stmt in statements {
-            assert!(self.return_type.is_none(), "function has already returned");
-            self.visit_stmt(stmt);
+            if !self.return_type.is_none() {
+                Err(Error::new(vec![Diagnostic::new(
+                    "function has already returned".to_string(),
+                    stmt.source(),
+                )]))?
+            }
+            self.visit_stmt(stmt)?;
         }
         self.end_scope();
-        None
+        Ok(None)
     }
 
     fn visit_let(
@@ -346,8 +448,8 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef>>> for Resolution<'a> {
         name: &'a Identifier,
         var_type: &'a TypeCell,
         initializer: &'a Expr,
-    ) -> Option<Rc<TypeDef>> {
-        let mut real_type = self.visit_expr(initializer);
+    ) -> Result<Option<Rc<TypeDef>>> {
+        let mut real_type = self.visit_expr(initializer)?;
         if let TypeDef::Lazy(expected_type) = var_type.borrow().as_ref() {
             let ref_type = self.get_type(expected_type);
             if real_type.is_castable_to(&ref_type) {
@@ -358,27 +460,33 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef>>> for Resolution<'a> {
         }
         self.declare_variable(name.get_name(), real_type.clone());
         *var_type.borrow_mut() = real_type;
-        None
+        Ok(None)
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> Option<Rc<TypeDef>> {
-        self.return_type = Some(self.visit_expr(value));
-        None
+    fn visit_return(&mut self, value: &'a Expr) -> Result<Option<Rc<TypeDef>>> {
+        self.return_type = Some(self.visit_expr(value)?);
+        Ok(None)
     }
 
-    fn visit_break(&mut self) -> Option<Rc<TypeDef>> {
-        None
+    fn visit_break(&mut self) -> Result<Option<Rc<TypeDef>>> {
+        Ok(None)
     }
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Option<Rc<TypeDef>> {
+    fn visit_while(
+        &mut self,
+        condition: &'a Expr,
+        body: &'a Rc<Stmt>,
+    ) -> Result<Option<Rc<TypeDef>>> {
         self.begin_scope();
-        assert!(
-            self.visit_expr(condition).is_bool(),
-            "expected while condition is boolean"
-        );
-        self.visit_stmt(body);
+        if !self.visit_expr(condition)?.is_bool() {
+            Err(Error::new(vec![Diagnostic::new(
+                "expected while confition to be boolean".to_string(),
+                condition.source(),
+            )]))?
+        }
+        self.visit_stmt(body)?;
         self.end_scope();
-        None
+        Ok(None)
     }
 
     fn visit_for(
@@ -387,31 +495,33 @@ impl<'a> StmtVisitor<'a, Option<Rc<TypeDef>>> for Resolution<'a> {
         condition: &'a Expr,
         increment: &'a Expr,
         body: &'a Rc<Stmt>,
-    ) -> Option<Rc<TypeDef>> {
+    ) -> Result<Option<Rc<TypeDef>>> {
         self.begin_scope();
-        self.visit_stmt(initializer);
-        assert!(self.visit_expr(condition).is_bool());
+        self.visit_stmt(initializer)?;
+        assert!(self.visit_expr(condition)?.is_bool());
         // We don't check the return type of the increment expression, because we allow any type
-        self.visit_expr(increment);
-        self.visit_stmt(body);
+        self.visit_expr(increment)?;
+        self.visit_stmt(body)?;
         self.end_scope();
-        None
+        Ok(None)
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Option<Rc<TypeDef>> {
-        Some(self.visit_expr(expr))
+    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Result<Option<Rc<TypeDef>>> {
+        Ok(Some(self.visit_expr(expr)?))
     }
 }
 
-impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
-    fn visit_import(&mut self, _: &[Identifier]) {}
+impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
+    fn visit_import(&mut self, _: &[Identifier]) -> Result<()> {
+        Ok(())
+    }
 
     fn visit_struct(
         &mut self,
         name: &'a Identifier,
         members: &'a [(Identifier, TypeCell)],
         methods: &'a [Rc<Decl>],
-    ) {
+    ) -> Result<()> {
         self.begin_scope();
         let struct_type = self
             .types
@@ -426,9 +536,10 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
             *member_type.borrow_mut() = ref_type;
         }
         for method in methods {
-            self.visit_decl(method);
+            self.visit_decl(method)?;
         }
         self.end_scope();
+        Ok(())
     }
 
     fn visit_function(
@@ -438,7 +549,7 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
         params: &'a [(Identifier, TypeCell)],
         body: &'a [Stmt],
         is_extern: bool,
-    ) {
+    ) -> Result<()> {
         assert!(self.return_type.is_none());
         let ref_type = self.get_ref_type(return_type.borrow().clone());
         *return_type.borrow_mut() = ref_type.clone();
@@ -451,10 +562,10 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
         if is_extern {
             // This function is defined outside of tau, there is no body that we can typecheck.
             self.end_scope();
-            return;
+            return Ok(());
         }
         for stmt in body {
-            self.visit_stmt(stmt);
+            self.visit_stmt(stmt)?;
         }
         let real = self.get_ref_type(
             self.return_type
@@ -469,11 +580,18 @@ impl<'a> DeclVisitor<'a, ()> for Resolution<'a> {
 
         self.return_type = None;
         self.end_scope();
+        Ok(())
     }
 
-    fn visit_const(&mut self, _: &'a Identifier, var_type: &'a TypeCell, initializer: &'a Expr) {
+    fn visit_const(
+        &mut self,
+        _: &'a Identifier,
+        var_type: &'a TypeCell,
+        initializer: &'a Expr,
+    ) -> Result<()> {
         let ref_type = self.get_ref_type(var_type.borrow().clone());
-        assert_eq!(ref_type.clone(), self.visit_expr(initializer));
+        assert_eq!(ref_type.clone(), self.visit_expr(initializer).unwrap());
         *var_type.borrow_mut() = ref_type;
+        Ok(())
     }
 }

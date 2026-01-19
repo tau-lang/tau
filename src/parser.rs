@@ -240,7 +240,7 @@ impl<'a> Parser {
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         Ok(Stmt::new(
-            Source::union(&current.get_source(), initializer.source()),
+            Source::union(&current.get_source(), &initializer.source()),
             StmtType::Let {
                 name: Identifier::from(name),
                 var_type: RefCell::new(Rc::new(var_type)),
@@ -256,7 +256,7 @@ impl<'a> Parser {
         self.consume(&TokenType::ParenRight)?;
         let body = Rc::new(self.stmt()?);
         Ok(Stmt::new(
-            Source::union(&current.get_source(), body.source()),
+            Source::union(&current.get_source(), &body.source()),
             StmtType::While { condition, body },
         ))
     }
@@ -395,7 +395,7 @@ impl<'a> Parser {
         }
         let rhs = self.consume(&TokenType::ParenRight)?;
         Ok(Expr::new(
-            Source::union(lhs.source(), &rhs.get_source()),
+            Source::union(&lhs.source(), &rhs.get_source()),
             crate::ast::ExprKind::Call {
                 callee: Rc::new(lhs),
                 arguments,

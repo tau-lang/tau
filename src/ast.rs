@@ -90,13 +90,11 @@ impl Expr {
     pub fn new(source: Source, kind: ExprKind) -> Self {
         Self { kind, source }
     }
-
+    pub fn source(&self) -> Source {
+        self.source.clone()
+    }
     pub fn kind(&self) -> &ExprKind {
         &self.kind
-    }
-
-    pub fn source(&self) -> &Source {
-        &self.source
     }
 }
 
@@ -190,13 +188,11 @@ impl Stmt {
     pub fn new(source: Source, kind: StmtType) -> Self {
         Stmt { kind, source }
     }
-
+    pub fn source(&self) -> Source {
+        self.source.clone()
+    }
     pub fn kind(&self) -> &StmtType {
         &self.kind
-    }
-
-    pub fn source(&self) -> &Source {
-        &self.source
     }
 }
 
