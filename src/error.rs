@@ -1,7 +1,4 @@
-use crate::{
-    lexer::{Lexer, Source, Token},
-    parser::Parser,
-};
+use crate::lexer::{Lexer, Source, Token};
 use std::{
     error,
     fmt::{self, Debug, Display, Formatter},
@@ -15,7 +12,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // FIX: this is not optimal, since i am using the same type for the msg and the cause (that i
 // am not creating here)
-pub(crate) fn parser_expected(expected: impl ToString, parser: &Parser, next: Token) -> Error {
+pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
     Error::new(vec![Diagnostic::new(
         expected.to_string(),
         next.get_source(),
@@ -23,10 +20,9 @@ pub(crate) fn parser_expected(expected: impl ToString, parser: &Parser, next: To
 }
 
 pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {
-    let (line, col) = lexer.location();
     Error::new(vec![Diagnostic::new(
         expected.to_string(),
-        Source::new(lexer.file(), line, col),
+        lexer.make_source(),
     )])
 }
 
@@ -94,14 +90,7 @@ pub struct Cause(String, Source);
 
 impl Display for Cause {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} at {}:{} in {}",
-            self.0,
-            self.1.line(),
-            self.1.column(),
-            self.1.file()
-        )
+        write!(f, "{} at {} in {}", self.0, self.1.line(), self.1.file())
     }
 }
 
@@ -134,12 +123,11 @@ impl Display for Diagnostic {
  {BOLD}{BLUE}-->{RESET} {}
   {BOLD}{BLUE}|
   |{RESET} {}
-  {BOLD}{BLUE}|{RESET}{RED}{}^ {}{RESET}",
+  {BOLD}{BLUE}|{RESET}{RED}     ^ {}{RESET}",
             self.source,
             nth_line(self.source.file(), self.source.line())
                 .unwrap()
                 .unwrap(),
-            " ".repeat(self.source.column()),
             self.message
         )
     }

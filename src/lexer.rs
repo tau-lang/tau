@@ -11,7 +11,8 @@ use std::str::Chars;
 pub struct Source {
     file: Rc<PathBuf>,
     line: usize,
-    column: usize,
+    start: usize,
+    end: usize,
 }
 
 #[cfg(test)]
@@ -20,18 +21,29 @@ impl Default for Source {
         Source {
             file: Rc::new(PathBuf::new()),
             line: 0,
-            column: 0,
+            start: 0,
+            end: 0,
         }
     }
 }
 
 impl Source {
-    pub fn new(file: Rc<PathBuf>, line: usize, column: usize) -> Source {
-        Source { file, line, column }
+    pub fn new(file: Rc<PathBuf>, line: usize, start: usize, end: usize) -> Source {
+        Source {
+            file,
+            line,
+            start,
+            end,
+        }
     }
 
-    pub fn path(&self) -> Rc<PathBuf> {
-        self.file.clone()
+    pub fn union(left: &Source, right: &Source) -> Source {
+        Source {
+            file: left.file.clone(),
+            line: left.line,
+            start: left.start,
+            end: right.end,
+        }
     }
 
     pub fn file(&self) -> &str {
@@ -41,21 +53,11 @@ impl Source {
     pub fn line(&self) -> usize {
         self.line
     }
-
-    pub fn column(&self) -> usize {
-        self.column
-    }
 }
 
 impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(
-            formatter,
-            "{}:{}:{}",
-            self.file.to_string_lossy(),
-            self.line,
-            self.column
-        )
+        write!(formatter, "{}:{}", self.file.to_string_lossy(), self.line)
     }
 }
 
@@ -186,7 +188,8 @@ pub struct Lexer<'a> {
     tokens: VecDeque<Token>,
     file: Rc<PathBuf>,
     line: usize,
-    column: usize,
+    start: usize,
+    offset: usize,
 }
 
 impl Lexer<'_> {
@@ -195,21 +198,12 @@ impl Lexer<'_> {
             source: source.peekable(),
             file,
             tokens: VecDeque::new(),
-            line: 1,
-            column: 0,
+            line: 0,
+            start: 0,
+            offset: 0,
         }
     }
-    pub(crate) fn location(&self) -> (usize, usize) {
-        (self.line, self.column)
-    }
 
-    pub(crate) fn file(&self) -> Rc<PathBuf> {
-        self.file.clone()
-    }
-
-    // pub(crate) fn source(&self) -> String {
-    //     self.source.clone().collect()
-    // }
     pub fn scan(mut self) -> Result<VecDeque<Token>> {
         let mut error = Vec::new();
         while !self.is_at_end() {
@@ -312,11 +306,12 @@ impl Lexer<'_> {
                     }
                 }
                 ' ' | '\r' | '\t' => {
+                    self.start = self.offset;
                     return self.scan_token();
                 }
                 '\n' => {
                     self.line += 1;
-                    self.column = 0;
+                    self.start = self.offset;
                     return self.scan_token();
                 }
                 '"' => self.string(),
@@ -443,13 +438,15 @@ impl Lexer<'_> {
     }
 
     fn advance(&mut self) -> Option<char> {
-        self.column += 1;
+        self.offset += 1;
         self.source.next()
     }
 
-    fn make_source(&self) -> Source {
-        Source::new(self.file.clone(), self.line, self.column)
+    /// Public because it is used for error
+    pub(crate) fn make_source(&self) -> Source {
+        Source::new(self.file.clone(), self.line, self.start, self.offset)
     }
+
     fn add_token(&mut self, token_type: TokenType) {
         self.tokens
             .push_back(Token::new(token_type, self.make_source()))

@@ -35,7 +35,6 @@ impl<'a> Parser {
         if token.get_type() == &TokenType::Eof {
             return Err(parser_expected(
                 "Found end of File but expected a token",
-                self,
                 token,
             ));
         }
@@ -50,7 +49,6 @@ impl<'a> Parser {
                     "Found {:?} expected import, function, struct or const",
                     t.clone()
                 ),
-                self,
                 token,
             )),
         }
@@ -80,11 +78,7 @@ impl<'a> Parser {
     fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected(
-                "expected an function identifier",
-                self,
-                name,
-            ));
+            return Err(parser_expected("expected an function identifier", name));
         }
 
         self.consume(&TokenType::ParenLeft)?;
@@ -103,7 +97,6 @@ impl<'a> Parser {
             if !type_name.get_type().is_identifer() {
                 return Err(parser_expected(
                     "expected a return type identifier",
-                    self,
                     type_name,
                 ));
             }
@@ -133,7 +126,7 @@ impl<'a> Parser {
     fn decl_struct(&mut self) -> Result<Decl> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected("expected a struct identifier", self, name));
+            return Err(parser_expected("expected a struct identifier", name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
@@ -173,16 +166,12 @@ impl<'a> Parser {
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected("expected a type identifier", self, name));
+            return Err(parser_expected("expected a type identifier", name));
         }
         self.consume(&TokenType::Colon)?;
         let type_name = self.advance();
         if !type_name.get_type().is_identifer() {
-            return Err(parser_expected(
-                "expected a type definition",
-                self,
-                type_name,
-            ));
+            return Err(parser_expected("expected a type definition", type_name));
         }
         Ok((
             Identifier::from(name),
@@ -233,11 +222,7 @@ impl<'a> Parser {
         let current = self.advance();
         let name = self.advance();
         if !name.get_type().is_identifer() {
-            return Err(parser_expected(
-                "expected a variable identifier",
-                self,
-                name,
-            ));
+            return Err(parser_expected("expected a variable identifier", name));
         }
         let var_type = if *self.peek().get_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
@@ -245,7 +230,6 @@ impl<'a> Parser {
             if !type_name.get_type().is_identifer() {
                 return Err(parser_expected(
                     "expected a type identifier for the variable",
-                    self,
                     type_name,
                 ));
             }
@@ -344,7 +328,6 @@ impl<'a> Parser {
                     "found {:?} but expected if, +, - , number, bool, brace or identifier",
                     x.clone()
                 ),
-                self,
                 next,
             ))?,
         };
@@ -410,13 +393,9 @@ impl<'a> Parser {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        self.consume(&TokenType::ParenRight)?;
+        let rhs = self.consume(&TokenType::ParenRight)?;
         Ok(Expr::new(
-            Source::new(
-                lhs.source().path(),
-                lhs.source().line(),
-                lhs.source().column(),
-            ),
+            Source::union(lhs.source(), &rhs.get_source()),
             crate::ast::ExprKind::Call {
                 callee: Rc::new(lhs),
                 arguments,
@@ -441,11 +420,7 @@ impl<'a> Parser {
         if *next.get_type() == TokenType::Dot {
             let rhs = self.advance();
             if !rhs.get_type().is_identifer() {
-                return Err(parser_expected(
-                    "expected an identidier on the RHS",
-                    self,
-                    rhs,
-                ));
+                return Err(parser_expected("expected an identidier on the RHS", rhs));
             }
             Ok(Expr::new(
                 next.get_source(),
@@ -503,7 +478,6 @@ impl<'a> Parser {
             if !name.get_type().is_identifer() {
                 return Err(parser_expected(
                     "expected field name identifier for the struct",
-                    self,
                     name,
                 ));
             }
@@ -593,7 +567,6 @@ impl<'a> Parser {
                     expected.clone(),
                     next.get_type().clone()
                 ),
-                self,
                 next,
             ));
         }

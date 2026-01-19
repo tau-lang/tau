@@ -185,6 +185,7 @@ pub struct Stmt {
     kind: StmtType,
     source: Source,
 }
+
 impl Stmt {
     pub fn kind(&self) -> &StmtType {
         &self.kind
