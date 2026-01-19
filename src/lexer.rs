@@ -30,6 +30,10 @@ impl Source {
         Source { file, line, column }
     }
 
+    pub fn path(&self) -> Rc<PathBuf> {
+        self.file.clone()
+    }
+
     pub fn file(&self) -> &str {
         self.file.to_str().unwrap()
     }

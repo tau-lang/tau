@@ -87,11 +87,16 @@ pub enum ExprKind {
 }
 
 impl Expr {
+    pub fn new(source: Source, kind: ExprKind) -> Self {
+        Self { kind, source }
+    }
+
     pub fn kind(&self) -> &ExprKind {
         &self.kind
     }
-    pub fn new(source: Source, kind: ExprKind) -> Self {
-        Self { kind, source }
+
+    pub fn source(&self) -> &Source {
+        &self.source
     }
 }
 

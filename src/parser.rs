@@ -1,36 +1,26 @@
 use crate::{
     ast::{Decl, Expr, ExprKind, Identifier, Stmt, StmtType},
     error::{Result, parser_expected},
-    lexer::{Token, TokenType},
+    lexer::{Source, Token, TokenType},
     typing::TypeDef,
 };
-use std::{
-    cell::{Ref, RefCell},
-    collections::VecDeque,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 #[derive(Debug)]
-pub struct Parser<'a> {
+pub struct Parser {
     tokens: VecDeque<Token>,
     declarations: Vec<Decl>,
-    source: &'a str,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: VecDeque<Token>, source: &str) -> Parser<'_> {
+impl<'a> Parser {
+    pub fn new(tokens: VecDeque<Token>) -> Parser {
         Parser {
             tokens,
             declarations: Vec::new(),
-            source,
         }
     }
-
-    // pub fn get_source(&self) -> &'a str {
-    //     self.source
-    // }
 
     pub fn parse(mut self) -> Result<Vec<Decl>> {
         while self.has_next() {
@@ -422,7 +412,11 @@ impl<'a> Parser<'a> {
         }
         self.consume(&TokenType::ParenRight)?;
         Ok(Expr::new(
-            self.peek().get_source(),
+            Source::new(
+                lhs.source().path(),
+                lhs.source().line(),
+                lhs.source().column(),
+            ),
             crate::ast::ExprKind::Call {
                 callee: Rc::new(lhs),
                 arguments,
