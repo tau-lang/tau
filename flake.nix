@@ -45,6 +45,7 @@
           bacon
           sccache
           perf
+          nixfmt-rfc-style
         ];
       in
         with pkgs; {
@@ -60,16 +61,35 @@
               alias perf-report="perf script report gecko"
             '';
           };
-          packages = {
-            default = rustPlatform.buildRustPackage rec {
+          packages = rec {
+            default = tau;
+
+            tau = rustPlatform.buildRustPackage {
               pname = "tau";
               version = "0.1.0";
               src = ./.;
               cargoLock.lockFile = ./Cargo.lock;
-              # cargoBuildFlags = ["--package ${pname}"];
               checkType = "debug";
               nativeBuildInputs = [pkgs.pkg-config];
               buildInputs = bi;
+            };
+
+            tau-manpages = pkgs.stdenv.mkDerivation {
+              pname = "tau-manpages";
+              version = "0.1.0";
+
+              src = ./.;
+
+              installPhase = ''
+                mkdir -p $out/share/man/man1
+                cp man/tau.1 $out/share/man/man1/
+              '';
+
+              meta = {
+                homepage = "https://github.com/tau-lang/ochtendzon";
+                license = lib.licenses.eupl12;
+                platforms = lib.platforms.all;
+              };
             };
           };
         };
