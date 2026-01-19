@@ -198,7 +198,7 @@ impl Lexer<'_> {
             source: source.peekable(),
             file,
             tokens: VecDeque::new(),
-            line: 0,
+            line: 1,
             start: 0,
             offset: 0,
         }
