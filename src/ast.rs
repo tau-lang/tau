@@ -18,6 +18,9 @@ impl Identifier {
         Identifier { name, source }
     }
 
+    pub fn get_source(&self) -> Source {
+        self.source.clone()
+    }
     pub fn get_name(&self) -> &str {
         &self.name
     }
@@ -30,7 +33,13 @@ impl Display for Identifier {
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub struct Expr {
+    kind: ExprKind,
+    source: Source,
+}
+
+#[derive(Debug)]
+pub enum ExprKind {
     Unary {
         // -right
         operator: Token,
@@ -80,43 +89,55 @@ pub enum Expr {
     },
 }
 
+impl Expr {
+    pub fn new(source: Source, kind: ExprKind) -> Self {
+        Self { kind, source }
+    }
+    pub fn source(&self) -> Source {
+        self.source.clone()
+    }
+    pub fn kind(&self) -> &ExprKind {
+        &self.kind
+    }
+}
+
 pub trait ExprVisitor<'a, T> {
     fn visit_expr(&mut self, expr: &'a Expr) -> T {
-        match expr {
-            Expr::Unary { operator, right } => self.visit_unary(operator, right),
-            Expr::Binary {
+        match expr.kind() {
+            ExprKind::Unary { operator, right } => self.visit_unary(operator, right),
+            ExprKind::Binary {
                 left,
                 operator,
                 right,
             } => self.visit_binary(left, operator, right),
-            Expr::Get {
+            ExprKind::Get {
                 left,
                 right,
                 lookup,
             } => self.visit_get(left, right, lookup),
-            Expr::Index {
+            ExprKind::Index {
                 object,
                 index,
                 lookup,
             } => self.visit_index(object, index, lookup),
-            Expr::Call { callee, arguments } => self.visit_call(callee, arguments),
-            Expr::CreateArray {
+            ExprKind::Call { callee, arguments } => self.visit_call(callee, arguments),
+            ExprKind::CreateArray {
                 array_type,
                 array_size,
                 fields,
             } => self.visit_create_array(array_type, array_size, fields),
-            Expr::CreateStruct {
+            ExprKind::CreateStruct {
                 struct_type,
                 fields,
             } => self.visit_create_struct(struct_type, fields),
-            Expr::If {
+            ExprKind::If {
                 condition,
                 if_branch,
                 else_branch,
                 expression_type,
             } => self.visit_if(condition, if_branch, else_branch, expression_type),
-            Expr::Literal(value) => self.visit_literal(value),
-            Expr::Variable {
+            ExprKind::Literal(value) => self.visit_literal(value),
+            ExprKind::Variable {
                 name,
                 variable_type,
             } => self.visit_variable(name, variable_type),
@@ -161,8 +182,26 @@ pub trait ExprVisitor<'a, T> {
 }
 
 #[derive(Debug)]
+pub struct Stmt {
+    kind: StmtType,
+    source: Source,
+}
+
+impl Stmt {
+    pub fn new(source: Source, kind: StmtType) -> Self {
+        Stmt { kind, source }
+    }
+    pub fn source(&self) -> Source {
+        self.source.clone()
+    }
+    pub fn kind(&self) -> &StmtType {
+        &self.kind
+    }
+}
+
+#[derive(Debug)]
 #[allow(dead_code)]
-pub enum Stmt {
+pub enum StmtType {
     Block {
         statements: Vec<Rc<Stmt>>,
     },
@@ -190,23 +229,23 @@ pub enum Stmt {
 
 pub trait StmtVisitor<'a, T> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) -> T {
-        match stmt {
-            Stmt::Block { statements } => self.visit_block(statements),
-            Stmt::Let {
+        match stmt.kind() {
+            StmtType::Block { statements } => self.visit_block(&statements),
+            StmtType::Let {
                 name,
                 var_type,
                 initializer,
-            } => self.visit_let(name, var_type, initializer),
-            Stmt::Return { value } => self.visit_return(value),
-            Stmt::Break => self.visit_break(),
-            Stmt::While { condition, body } => self.visit_while(condition, body),
-            Stmt::For {
+            } => self.visit_let(&name, &var_type, &initializer),
+            StmtType::Return { value } => self.visit_return(&value),
+            StmtType::Break => self.visit_break(),
+            StmtType::While { condition, body } => self.visit_while(condition, body),
+            StmtType::For {
                 initializer,
                 condition,
                 increment,
                 body,
             } => self.visit_for(initializer, condition, increment, body),
-            Stmt::ExprStmt(expr) => self.visit_expr_stmt(expr),
+            StmtType::ExprStmt(expr) => self.visit_expr_stmt(expr),
         }
     }
 

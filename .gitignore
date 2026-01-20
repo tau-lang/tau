@@ -2,3 +2,7 @@ result
 .direnv/
 target
 .pre-commit-config.yaml
+*.h
+*.c
+*.hpp
+*.cpp

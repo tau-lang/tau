@@ -1,27 +1,75 @@
 use crate::ast::Identifier;
+use crate::error::{Diagnostic, Error, Result, lexer_expected};
 use std::collections::VecDeque;
+use std::fmt::{Display, Formatter};
+use std::fs;
+use std::io;
 use std::iter::Peekable;
+use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
-    line: u32,
-    column: u32,
+    file: Rc<PathBuf>,
+    line: usize,
+    start: usize,
+    end: usize,
 }
 
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
+#[cfg(test)]
+impl Default for Source {
+    fn default() -> Self {
+        Source {
+            file: Rc::new(PathBuf::new()),
+            line: 0,
+            start: 0,
+            end: 0,
+        }
+    }
+}
+
+impl Source {
+    pub fn new(file: Rc<PathBuf>, line: usize, start: usize, end: usize) -> Source {
+        Source {
+            file,
+            line,
+            start,
+            end,
+        }
+    }
+
+    pub fn union(left: &Source, right: &Source) -> Source {
+        Source {
+            file: left.file.clone(),
+            line: left.line,
+            start: left.start,
+            end: right.end,
+        }
+    }
+
+    pub fn content(&self) -> io::Result<String> {
+        let content = fs::read_to_string(self.file.to_path_buf())?;
+
+        return Ok(content[self.start..self.end].to_string());
+    }
+}
+
+impl Display for Source {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(formatter, "{}:{}", self.file.to_string_lossy(), self.line)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     token_type: TokenType,
     source: Source,
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, line: u32, column: u32) -> Token {
-        Token {
-            token_type,
-            source: Source { line, column },
-        }
+    pub fn new(token_type: TokenType, source: Source) -> Token {
+        Token { token_type, source }
     }
 
     pub fn get_type(&self) -> &TokenType {
@@ -34,6 +82,9 @@ impl Token {
             TokenType::VSelf => "self",
             _ => panic!("expected identifier"),
         }
+    }
+    pub fn get_source(&self) -> Source {
+        self.source.clone()
     }
 }
 
@@ -131,31 +182,43 @@ impl TokenType {
     }
 }
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
     source: Peekable<Chars<'a>>,
     tokens: VecDeque<Token>,
-    line: u32,
-    column: u32,
+    file: Rc<PathBuf>,
+    line: usize,
+    start: usize,
+    offset: usize,
 }
 
 impl Lexer<'_> {
-    pub fn new(source: Chars<'_>) -> Lexer<'_> {
+    pub fn new(source: Chars<'_>, file: Rc<PathBuf>) -> Lexer<'_> {
         Lexer {
             source: source.peekable(),
+            file,
             tokens: VecDeque::new(),
             line: 1,
-            column: 0,
+            start: 0,
+            offset: 0,
         }
     }
 
-    pub fn scan(mut self) -> VecDeque<Token> {
+    pub fn scan(mut self) -> Result<VecDeque<Token>> {
+        let mut error = Vec::new();
         while !self.is_at_end() {
-            self.scan_token();
+            if let Err(e) = self.scan_token() {
+                error.push(e);
+            }
         }
-        self.tokens
+        if !error.is_empty() {
+            Err(error.into_iter().reduce(|a, b| a.concat(b)).unwrap())
+        } else {
+            Ok(self.tokens)
+        }
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self) -> Result<()> {
         let token_type = if let Some(c) = self.advance() {
             match c {
                 '(' => TokenType::ParenLeft,
@@ -190,7 +253,10 @@ impl Lexer<'_> {
                 }
                 '/' => {
                     if self.matchc('/') {
-                        while !self.is_at_end() && *self.peek().expect("unexpected eof") != '\n' {
+                        let lex: &Lexer = &self.clone();
+                        while !self.is_at_end()
+                            && *self.peek().ok_or(lexer_expected("unexpected EOF", lex))? != '\n'
+                        {
                             self.advance();
                         }
                         return self.scan_token();
@@ -204,7 +270,7 @@ impl Lexer<'_> {
                     if self.matchc('&') {
                         TokenType::And
                     } else {
-                        panic!("Unexpected character.");
+                        Err(lexer_expected("unexpected character", self))?
                     }
                 }
                 '|' => {
@@ -243,21 +309,25 @@ impl Lexer<'_> {
                     }
                 }
                 ' ' | '\r' | '\t' => {
+                    self.start = self.offset;
                     return self.scan_token();
                 }
                 '\n' => {
                     self.line += 1;
-                    self.column = 0;
+                    self.start = self.offset;
                     return self.scan_token();
                 }
-                '"' => self.string(),
+                '"' => self.string()?,
                 _ => {
                     if Lexer::is_digit(c) {
-                        self.number(c)
+                        self.number(c)?
                     } else if Lexer::is_alpha(c) {
-                        self.identifier(c)
+                        self.identifier(c)?
                     } else {
-                        panic!("Unexpected character '{}'.", c)
+                        Err(Error::new(vec![Diagnostic::new(
+                            format!("unexpected character '{}'", c),
+                            self.make_source(),
+                        )]))?
                     }
                 }
             }
@@ -265,17 +335,21 @@ impl Lexer<'_> {
             TokenType::Eof
         };
         self.add_token(token_type);
+        Ok(())
     }
 
-    fn identifier(&mut self, c: char) -> TokenType {
+    fn identifier(&mut self, c: char) -> Result<TokenType> {
         let mut text = String::from(c);
-        while !self.is_at_end() && Lexer::is_alpha_numeric(*self.peek().expect("unexpected eof")) {
+        let lex: &Lexer = &self.clone();
+        while !self.is_at_end()
+            && Lexer::is_alpha_numeric(*self.peek().ok_or(lexer_expected("unexpected EOF", lex))?)
+        {
             if let Some(c) = self.advance() {
                 text.push(c)
             }
         }
 
-        match text.as_str() {
+        Ok(match text.as_str() {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
             "fn" => TokenType::Function,
@@ -292,31 +366,49 @@ impl Lexer<'_> {
             "true" => TokenType::Bool(true),
             "false" => TokenType::Bool(false),
             _ => TokenType::Identifier(text),
-        }
+        })
     }
 
-    fn number(&mut self, c: char) -> TokenType {
+    fn number(&mut self, c: char) -> Result<TokenType> {
         let mut text = String::from(c);
         let mut is_float = false;
         while !self.is_at_end() {
-            let next = *self.peek().expect("unexpected eof");
+            let next = if let Some(next) = self.peek() {
+                *next
+            } else {
+                Err(lexer_expected("unexpected EOF", self))?
+            };
             if Lexer::is_digit(next) {
-                text.push(self.advance().expect("unexpected eof, expected digit"));
+                text.push(
+                    self.advance()
+                        .ok_or(lexer_expected("unexpected EOF, expected a digit", self))?,
+                )
             } else if next == '.' {
-                assert!(!is_float);
+                if is_float {
+                    return Err(lexer_expected("found a second dot in the float", self));
+                }
                 is_float = true;
-                text.push(self.advance().expect("unexpected eof, expected dot"));
+                text.push(
+                    self.advance()
+                        .ok_or(lexer_expected("found EOF, expected a dot ('.')", self))?,
+                );
             } else {
                 break;
             }
         }
 
-        TokenType::Number(text.parse().unwrap())
+        Ok(TokenType::Number(text.parse().unwrap()))
     }
 
-    fn string(&mut self) -> TokenType {
+    fn string(&mut self) -> crate::error::Result<TokenType> {
         let mut text = String::new();
-        while *self.peek().expect("got eof in unterminated string") != '"' {
+        // FIX:
+        while *self
+            .peek()
+                .unwrap()
+            // .ok_or(lexer_expected("got EOF in unterminated String", self))?
+            != '"'
+        {
             if let Some(c) = self.advance() {
                 if c == '\n' {
                     self.line += 1;
@@ -328,7 +420,7 @@ impl Lexer<'_> {
         // The enclosing ".
         self.advance();
 
-        TokenType::String(text)
+        Ok(TokenType::String(text))
     }
 
     fn matchc(&mut self, c: char) -> bool {
@@ -365,12 +457,17 @@ impl Lexer<'_> {
     }
 
     fn advance(&mut self) -> Option<char> {
-        self.column += 1;
+        self.offset += 1;
         self.source.next()
+    }
+
+    /// Public because it is used for error
+    pub(crate) fn make_source(&self) -> Source {
+        Source::new(self.file.clone(), self.line, self.start, self.offset)
     }
 
     fn add_token(&mut self, token_type: TokenType) {
         self.tokens
-            .push_back(Token::new(token_type, self.line, self.column))
+            .push_back(Token::new(token_type, self.make_source()))
     }
 }

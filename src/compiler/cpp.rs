@@ -7,7 +7,7 @@ use crate::{
 use std::{
     fmt::{self, Display, Formatter},
     fs::File,
-    io::{Error, prelude::*},
+    io::prelude::*,
     ops::Deref,
     rc::Rc,
 };
@@ -125,8 +125,9 @@ impl CppHeaderGenerator {
 }
 
 impl<'a> Generator<'a> for CppHeaderGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> Result<(), Error> {
-        let mut file = File::create(output)?;
+    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
+        // TODO:
+        let mut file = File::create(output).expect("error reading file");
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
         let module_name = path_buf
@@ -143,7 +144,8 @@ impl<'a> Generator<'a> for CppHeaderGenerator {
         write!(
             file,
             "#ifndef {makro_name}\n#define {makro_name} 1\nnamespace {module_name} {{\n{declarations}\n}}\n#endif\n"
-        )
+        ).unwrap();
+        Ok(())
     }
 }
 
@@ -251,8 +253,9 @@ impl<'a> CppCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CppCodeGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> Result<(), Error> {
-        let mut file = File::create(output)?;
+    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
+        // TODO:
+        let mut file = File::create(output).unwrap();
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("hpp");
         let header_file = path_buf
@@ -272,7 +275,8 @@ impl<'a> Generator<'a> for CppCodeGenerator {
         write!(
             file,
             "#include \"{header_file}\"\nnamespace {module_name} {{\n{declarations}\n}}\n{main_function}"
-        )
+        ).unwrap();
+        Ok(())
     }
 }
 
@@ -577,6 +581,8 @@ impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
 
 #[cfg(test)]
 mod tests {
+    use crate::lexer::Source;
+
     use super::*;
 
     #[test]
@@ -709,7 +715,12 @@ mod tests {
             "re",
         ]
         .into_iter()
-        .map(|name| Identifier::from(Token::new(TokenType::Identifier(name.to_string()), 0, 0)));
+        .map(|name| {
+            Identifier::from(Token::new(
+                TokenType::Identifier(name.to_string()),
+                Source::default(),
+            ))
+        });
         let values = names
             .map(|name| CppSourceCode::from(&name))
             .collect::<Vec<CppSourceCode>>();
