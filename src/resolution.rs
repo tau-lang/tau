@@ -1,7 +1,7 @@
 use crate::{
     ast::{Decl, DeclVisitor, Expr, ExprVisitor, Identifier, Stmt, StmtVisitor},
     error::{Diagnostic, Error, Result},
-    lexer::{Token, TokenType},
+    lexer::{Source, Token, TokenType},
     typing::{TypeCell, TypeDef, TypeNames},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -38,7 +38,7 @@ impl<'a> Resolution<'a> {
         self.scopes
     }
 
-    fn declare_variable(&mut self, var_name: &Identifier, var_type: Rc<TypeDef>) {
+    fn declare_variable(&mut self, var_name: &Identifier, var_type: Rc<TypeDef>) -> Result<()> {
         if (*self
             .scopes
             .last_mut()
@@ -47,8 +47,12 @@ impl<'a> Resolution<'a> {
         .insert(var_name.to_string(), var_type)
         .is_some()
         {
-            unreachable!("should be resolved by the parser beforehand")
+            return Err(Error::new(vec![Diagnostic::new(
+                format!("variable '{}' was already declared", var_name.get_name()),
+                var_name.get_source(),
+            )]));
         }
+        Ok(())
     }
 
     fn lookup_variable(&mut self, var_name: &Identifier) -> Result<Rc<TypeDef>> {
@@ -135,7 +139,7 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
         let throw_error = |msg: &str| {
             Err(Error::new(vec![Diagnostic::new(
                 msg.to_string(),
-                operator.get_source(),
+                Source::union(&operator.get_source(), &right.source()),
             )]))
         };
         let r = self.visit_expr(right)?;
@@ -165,7 +169,7 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
         let throw_error = |msg: &str| {
             Err(Error::new(vec![Diagnostic::new(
                 msg.to_string(),
-                operator.get_source(),
+                Source::union(&left.source(), &right.source()),
             )]))
         };
         let l = self.visit_expr(left)?;
@@ -376,7 +380,7 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
                                 Err(Error::new(vec![Diagnostic::new(
                                     "if branch and else branch have different return types"
                                         .to_string(),
-                                    if_branch.source(),
+                                    Source::union(&condition.source(), &else_branch.source()),
                                 )]))?
                             }
                             *expression_type.borrow_mut() = if_type.clone();
@@ -392,7 +396,7 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
                                 Err(Error::new(vec![Diagnostic::new(
                                     "if branch and else branch have different return types"
                                         .to_string(),
-                                    if_branch.source(),
+                                    Source::union(&condition.source(), &else_branch.source()),
                                 )]))?
                             }
                             Ok(void)
@@ -403,7 +407,7 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
                 } else {
                     Err(Error::new(vec![Diagnostic::new(
                         "if expression expected else branch".to_string(),
-                        if_branch.source(),
+                        Source::union(&condition.source(), &if_branch.source()),
                     )]))?
                 }
             }
@@ -437,17 +441,23 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
 
 impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
     fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Result<Option<Rc<TypeDef>>> {
+        let mut errors = Option::None;
         self.begin_scope();
         for stmt in statements {
             if self.return_type.is_some() {
-                Err(Error::new(vec![Diagnostic::new(
+                return Err(Error::new(vec![Diagnostic::new(
                     "function has already returned".to_string(),
                     stmt.source(),
-                )]))?
+                )]));
             }
-            self.visit_stmt(stmt)?;
+            if let Err(err) = self.visit_stmt(stmt) {
+                errors = err.after(errors);
+            }
         }
         self.end_scope();
+        if let Some(err) = errors {
+            return Err(err);
+        }
         Ok(None)
     }
 
@@ -469,7 +479,7 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
                 )]))?;
             }
         }
-        self.declare_variable(name, real_type.clone());
+        self.declare_variable(name, real_type.clone())?;
         *var_type.borrow_mut() = real_type;
         Ok(None)
     }
@@ -568,16 +578,18 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
     ) -> Result<()> {
         if self.return_type.is_some() {
             Err(Error::new(vec![Diagnostic::new(
-                "u stupid.".to_string(),
+                "return type already exists before body was defined".to_string(),
                 identifier.get_source(),
             )]))?;
         }
         let ref_type = self.get_ref_type(return_type.borrow().clone())?;
         *return_type.borrow_mut() = ref_type.clone();
+
+        // When a new body begins, first define all parameters as local variables.
         self.begin_scope();
         for (param_name, param_type) in params {
             let ref_type = self.get_ref_type(param_type.borrow().clone())?;
-            self.declare_variable(param_name, ref_type.clone());
+            self.declare_variable(param_name, ref_type.clone())?;
             *param_type.borrow_mut() = ref_type;
         }
         if is_extern {
@@ -585,9 +597,19 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
             self.end_scope();
             return Ok(());
         }
+
+        // Check body. If an error occures, collect errors instead of throwing them directly.
+        let mut errors = Option::None;
         for stmt in body {
-            self.visit_stmt(stmt)?;
+            if let Err(err) = self.visit_stmt(stmt) {
+                errors = err.after(errors);
+            }
         }
+        if let Some(err) = errors {
+            return Err(err);
+        }
+
+        // Calculate what was declared as a return type and what we really got.
         let real = self.get_ref_type(
             self.return_type
                 .clone()

@@ -48,18 +48,10 @@ impl Source {
         }
     }
 
-    pub fn file(&self) -> &str {
-        self.file.to_str().unwrap()
-    }
-
     pub fn content(&self) -> io::Result<String> {
         let content = fs::read_to_string(self.file.to_path_buf())?;
 
         return Ok(content[self.start..self.end].to_string());
-    }
-
-    pub fn line(&self) -> usize {
-        self.line
     }
 }
 

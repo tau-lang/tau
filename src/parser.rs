@@ -376,7 +376,7 @@ impl<'a> Parser {
         let rhs = self.expr()?;
         self.consume(&TokenType::BracketRight)?;
         Ok(Expr::new(
-            self.peek().get_source(),
+            Source::union(&lhs.source(), &rhs.source()),
             ExprKind::Index {
                 object: Rc::new(lhs),
                 index: Rc::new(rhs),
@@ -407,7 +407,7 @@ impl<'a> Parser {
         let r_bp = Parser::prefix_binding_power(op.get_type());
         let rhs = self.expr_bp(r_bp)?;
         Ok(Expr::new(
-            op.get_source(),
+            Source::union(&op.get_source(), &rhs.source()),
             crate::ast::ExprKind::Unary {
                 operator: op,
                 right: Rc::new(rhs),
@@ -423,7 +423,7 @@ impl<'a> Parser {
                 return Err(parser_expected("expected an identidier on the RHS", rhs));
             }
             Ok(Expr::new(
-                next.get_source(),
+                Source::union(&lhs.source(), &rhs.get_source()),
                 ExprKind::Get {
                     left: Rc::new(lhs),
                     right: Identifier::from(rhs),
@@ -433,7 +433,7 @@ impl<'a> Parser {
         } else {
             let rhs = self.expr_bp(bp)?;
             Ok(Expr::new(
-                next.get_source(),
+                Source::union(&lhs.source(), &rhs.source()),
                 ExprKind::Binary {
                     left: Rc::new(lhs),
                     operator: next,
@@ -459,7 +459,7 @@ impl<'a> Parser {
         let current = self.consume(&TokenType::BraceRight)?;
 
         Ok(Expr::new(
-            current.get_source(),
+            Source::union(&array_type.get_source(), &current.get_source()),
             ExprKind::CreateArray {
                 array_type: RefCell::new(Rc::new(TypeDef::Lazy(
                     array_type.identifier().to_string(),
@@ -491,7 +491,7 @@ impl<'a> Parser {
         }
         self.consume(&TokenType::BraceRight)?;
         Ok(Expr::new(
-            current.get_source(),
+            Source::union(&struct_name.get_source(), &current.get_source()),
             ExprKind::CreateStruct {
                 struct_type: RefCell::new(Rc::new(TypeDef::Lazy(
                     struct_name.identifier().to_string(),
@@ -506,14 +506,19 @@ impl<'a> Parser {
         let condition = Rc::new(self.expr()?);
         self.consume(&TokenType::ParenRight)?;
         let if_branch = Rc::new(self.stmt()?);
-        let else_branch = if *self.peek().get_type() == TokenType::Else {
+        let (else_branch, source) = if *self.peek().get_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
-            Some(Rc::new(self.stmt()?))
+            let else_branch = self.stmt()?;
+            let source = Source::union(&current.get_source(), &else_branch.source());
+            (Some(Rc::new(else_branch)), source)
         } else {
-            None
+            (
+                None,
+                Source::union(&current.get_source(), &if_branch.source()),
+            )
         };
         Ok(Expr::new(
-            current.get_source(),
+            source,
             ExprKind::If {
                 condition,
                 if_branch,

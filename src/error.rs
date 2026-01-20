@@ -4,11 +4,6 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
-use std::fs;
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
@@ -38,11 +33,19 @@ impl Error {
     pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
         Error(diagnostics)
     }
+
     pub fn concat(self, next: Self) -> Self {
         let mut m = self.0;
         let mut n = next.0;
         m.append(&mut n);
         Error(m)
+    }
+
+    pub fn after(self, prev: Option<Self>) -> Option<Self> {
+        if let Some(err) = prev {
+            return Some(err.concat(self));
+        }
+        Some(self)
     }
 }
 
@@ -67,41 +70,16 @@ impl Display for Error {
 pub struct Diagnostic {
     message: String,
     source: Source,
-    cause: Option<Cause>,
-}
-
-#[derive(Debug)]
-pub struct Cause(String, Source);
-
-impl Display for Cause {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} at {} in {}", self.0, self.1.line(), self.1.file())
-    }
 }
 
 impl Diagnostic {
     pub fn new(message: String, source: Source) -> Diagnostic {
-        Diagnostic {
-            message,
-            source,
-            cause: None,
-        }
-    }
-
-    pub fn with_cause(message: String, source: Source, cause: Cause) -> Diagnostic {
-        Diagnostic {
-            message,
-            source,
-            cause: Some(cause),
-        }
+        Diagnostic { message, source }
     }
 }
 
 impl Display for Diagnostic {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        if let Some(cause) = &self.cause {
-            std::fmt::Display::fmt(cause, formatter)?;
-        }
         write!(
             formatter,
             "
