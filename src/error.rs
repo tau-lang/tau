@@ -4,14 +4,13 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+use std::fs;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-// FIX: this is not optimal, since i am using the same type for the msg and the cause (that i
-// am not creating here)
 pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
     Error::new(vec![Diagnostic::new(
         expected.to_string(),
@@ -33,20 +32,6 @@ const RED: &str = "\x1b[31m";
 const BLUE: &str = "\x1b[34m";
 const GREEN: &str = "\x1b[93m";
 
-fn nth_line<P: AsRef<Path>>(path: P, n: usize) -> io::Result<Option<String>> {
-    let file = File::open(path)?;
-    let reader = io::BufReader::new(file);
-
-    for (i, line) in reader.lines().enumerate() {
-        if i + 1 == n {
-            return line.map(Some);
-        }
-    }
-
-    Ok(None) // File had fewer than n lines
-}
-
-// #[derive(Debug)]
 pub struct Error(Vec<Diagnostic>);
 
 impl Error {
@@ -123,11 +108,9 @@ impl Display for Diagnostic {
  {BOLD}{BLUE}-->{RESET} {}
   {BOLD}{BLUE}|
   |{RESET} {}
-  {BOLD}{BLUE}|{RESET}{RED}     ^ {}{RESET}",
+  {BOLD}{BLUE}|{RESET}{RED}  ^ {}{RESET}",
             self.source,
-            nth_line(self.source.file(), self.source.line())
-                .unwrap()
-                .unwrap(),
+            self.source.content().expect("File exists"),
             self.message
         )
     }
