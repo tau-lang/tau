@@ -80,15 +80,13 @@ impl Diagnostic {
 
 impl Display for Diagnostic {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
+        write!(formatter, "\n {BOLD}{BLUE}-->{RESET} {}\n", self.source)?;
+        for line in self.source.content().expect("File exists").split("\n") {
+            write!(formatter, "  {BOLD}{BLUE}|{RESET} {}\n", line)?;
+        }
         write!(
             formatter,
-            "
- {BOLD}{BLUE}-->{RESET} {}
-  {BOLD}{BLUE}|
-  |{RESET} {}
-  {BOLD}{BLUE}|{RESET}{RED}  ^ {}{RESET}",
-            self.source,
-            self.source.content().expect("File exists"),
+            "  {BOLD}{BLUE}|{RESET}{RED}  ^ {}{RESET}",
             self.message
         )
     }
