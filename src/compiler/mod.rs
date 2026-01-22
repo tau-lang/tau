@@ -1,5 +1,4 @@
-use crate::ast::Decl;
-use crate::error::Error;
+use crate::{ast::declaration::Decl, error::Error};
 use std::path::{Path, PathBuf};
 
 pub mod cpp;

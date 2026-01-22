@@ -1,7 +1,12 @@
 use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 use crate::{
-    ast::{Decl, DeclVisitor, Expr, Identifier, Stmt},
+    ast::{
+        declaration::{Decl, DeclVisitor},
+        expression::Expr,
+        identifier::Identifier,
+        statement::Stmt,
+    },
     lexer::Lexer,
     parser::Parser,
     typing::{TypeCell, TypeDef, TypeNames},

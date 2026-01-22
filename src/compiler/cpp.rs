@@ -1,5 +1,10 @@
 use crate::{
-    ast::{Decl, DeclVisitor, Expr, ExprVisitor, Identifier, Stmt, StmtVisitor},
+    ast::{
+        declaration::{Decl, DeclVisitor},
+        expression::{Expr, ExprVisitor},
+        identifier::Identifier,
+        statement::{Stmt, StmtVisitor},
+    },
     compiler::Generator,
     lexer::{Token, TokenType},
     typing::{TypeCell, TypeDef},

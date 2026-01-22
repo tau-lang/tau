@@ -1,13 +1,16 @@
-use crate::ast::Identifier;
-use crate::error::{Diagnostic, Error, Result, lexer_expected};
-use std::collections::VecDeque;
-use std::fmt::{Display, Formatter};
-use std::fs;
-use std::io;
-use std::iter::Peekable;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::str::Chars;
+use crate::{
+    ast::identifier::Identifier,
+    error::{Diagnostic, Error, Result, lexer_expected},
+};
+use std::{
+    collections::VecDeque,
+    fmt::{Display, Formatter},
+    fs, io,
+    iter::Peekable,
+    path::PathBuf,
+    rc::Rc,
+    str::Chars,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {

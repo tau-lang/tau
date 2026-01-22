@@ -1,5 +1,10 @@
 use crate::{
-    ast::{Decl, Expr, ExprKind, Identifier, Stmt, StmtType},
+    ast::{
+        declaration::Decl,
+        expression::{Expr, ExprKind},
+        identifier::Identifier,
+        statement::{Stmt, StmtType},
+    },
     error::{Result, parser_expected},
     lexer::{Source, Token, TokenType},
     typing::TypeDef,
@@ -396,7 +401,7 @@ impl<'a> Parser {
         let rhs = self.consume(&TokenType::ParenRight)?;
         Ok(Expr::new(
             Source::union(&lhs.source(), &rhs.get_source()),
-            crate::ast::ExprKind::Call {
+            ExprKind::Call {
                 callee: Rc::new(lhs),
                 arguments,
             },
@@ -408,7 +413,7 @@ impl<'a> Parser {
         let rhs = self.expr_bp(r_bp)?;
         Ok(Expr::new(
             Source::union(&op.get_source(), &rhs.source()),
-            crate::ast::ExprKind::Unary {
+            ExprKind::Unary {
                 operator: op,
                 right: Rc::new(rhs),
             },
