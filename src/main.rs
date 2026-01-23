@@ -1,6 +1,6 @@
 #![allow(clippy::needless_return)]
 use crate::{
-    ast::StmtVisitor,
+    ast::statement::StmtVisitor,
     compiler::{
         Compiler,
         cpp::{CppCodeGenerator, CppHeaderGenerator},
@@ -74,7 +74,8 @@ fn main() -> error::Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::StmtVisitor, header::Header, lexer::Lexer, parser::Parser, resolution::Resolution,
+        ast::statement::StmtVisitor, header::Header, lexer::Lexer, parser::Parser,
+        resolution::Resolution,
     };
     use std::fs;
     use std::path::PathBuf;
