@@ -105,10 +105,11 @@ impl<'a> DeclVisitor<'a, ()> for Header {
             filename.set_extension("tau");
             filename
         };
-        let content = fs::read_to_string(filename).expect("Expected to open file");
-        let lexer = Lexer::new(content.chars());
-        let parser = Parser::new(lexer.scan());
-        let ast = parser.parse();
+        let content = fs::read_to_string(&filename).expect("Expected to open file");
+        let lexer = Lexer::new(content.chars(), Rc::new(filename));
+        let parser = Parser::new(lexer.scan().unwrap());
+        // FIX:
+        let ast = parser.parse().unwrap();
         let header = Header::new().headers(&ast);
         let (types, fields) = header.analysed();
         self.fields.insert(
