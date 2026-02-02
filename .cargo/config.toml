@@ -1,0 +1,7 @@
+[rust]
+# Get more debug info for profiling https://nnethercote.github.io/perf-book/profiling.html
+debuginfo-level = 1
+
+[build]
+# Force frame pointers and symbol demangling for profiling
+rustflags = ["-C", "force-frame-pointers=yes", "-C", "symbol-mangling-version=v0"]

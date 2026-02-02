@@ -64,6 +64,17 @@ We follow the [rust style guide](https://doc.rust-lang.org/beta/style-guide/).
 
 Please ensure your code adheres to these conventions before submitting a pull request.
 
+## Profiling
+
+If you want to profile Tau, we recommend using `perf`. You can run
+
+```sh
+perf-record --call-graph dwarf -- ./target/debug/tau ./your/code/test.tau
+perf-report script report gecko
+```
+
+for recording and uploading the performance for Tau to the Firefox profiler.
+
 ---
 
 Thank you for helping improve Tau!

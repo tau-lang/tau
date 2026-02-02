@@ -1,7 +1,18 @@
+# Rust
 result
+
 .direnv/
+
+# Nix
 target
 .pre-commit-config.yaml
+
+# Profiling
+gecko_profile.json
+perf.data
+perf.data.old
+
+# Generated files
 *.h
 *.c
 *.hpp
