@@ -19,7 +19,7 @@ impl TryFrom<String> for Target {
     }
 }
 
-const HELP_MESSAGE: &str = r#"tau [options] inputs...
+pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
   -o, --output      set the output directory
   -i, --input       append the input tau file
   -h, --help        display this help message
