@@ -57,8 +57,6 @@
             buildInputs = bi ++ devDependencies;
             shellHook = ''
               ${config.pre-commit.installationScript}
-              alias perf-record="perf record --call-graph dwarf -- ./target/debug/tau examples/vec2.tau"
-              alias perf-report="perf script report gecko"
             '';
           };
           packages = rec {
