@@ -1,6 +1,7 @@
 #![allow(clippy::needless_return)]
 use crate::{
     ast::statement::StmtVisitor,
+    cli::ArgsBuilder,
     compiler::{
         Compiler,
         cpp::{CppCodeGenerator, CppHeaderGenerator},
@@ -11,9 +12,10 @@ use crate::{
     parser::Parser,
     resolution::Resolution,
 };
-use std::{collections::HashMap, env, fs, io, path::PathBuf, rc::Rc, str::FromStr};
+use std::{fs, io, path::PathBuf, rc::Rc, str::FromStr};
 
 mod ast;
+mod cli;
 mod compiler;
 mod error;
 mod header;
@@ -23,29 +25,27 @@ mod resolution;
 mod typing;
 
 fn main() -> error::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    match args.len() {
-        1 => {
-            let mut buffer = String::new();
-            while io::stdin().read_line(&mut buffer).is_ok() {
-                let lexer = Lexer::new(buffer.chars(), Rc::new(PathBuf::new()));
-                let tokens = lexer.scan()?;
-                // Check if user pressed ^D
-                if tokens.len() > 1 {
-                    let mut parser = Parser::new(tokens);
-                    let ast = parser.stmt()?;
-                    let (types, fields) = (HashMap::new(), HashMap::new());
-                    let mut resolution = Resolution::new(&types, fields);
-                    resolution.visit_stmt(&ast)?;
-                    println!("{:#?}", resolution);
-                    buffer.clear();
-                } else {
-                    break;
-                }
+    let args = ArgsBuilder::new().parse().unwrap().build();
+    if args.get_input().is_empty() {
+        let mut buffer = String::new();
+        while io::stdin().read_line(&mut buffer).is_ok() {
+            let lexer = Lexer::new(buffer.chars(), Rc::new(PathBuf::new()));
+            let tokens = lexer.scan()?;
+            // Check if user pressed ^D
+            if tokens.len() > 1 {
+                let mut parser = Parser::new(tokens);
+                let ast = parser.stmt()?;
+                let (types, fields) = Header::new().analysed();
+                let mut resolution = Resolution::new(&types, fields);
+                resolution.visit_stmt(&ast)?;
+                println!("{:#?}", resolution);
+                buffer.clear();
+            } else {
+                break;
             }
         }
-        2 => {
-            let filename = args.get(1).unwrap();
+    } else {
+        for filename in args.get_input() {
             let content = fs::read_to_string(filename).expect("Expected to open file");
             let lexer = Lexer::new(
                 content.chars(),
@@ -55,17 +55,12 @@ fn main() -> error::Result<()> {
             let ast = parser.parse()?;
             let header = Header::new().headers(&ast);
             let (types, fields) = header.analysed();
-            let resolution = Resolution::new(&types, fields).resolve(&ast);
-            let _ = resolution?.analysed();
+            Resolution::new(&types, fields).resolve(&ast)?;
             let compiler = Compiler::new(&ast);
             let header_output = replace_extension(filename, "hpp");
             compiler.compile(CppHeaderGenerator, &header_output)?;
             let code_output = replace_extension(filename, "cpp");
             compiler.compile(CppCodeGenerator::new(), &code_output)?;
-        }
-        _ => {
-            // TODO:
-            panic!("usage: {:?} [file]", args.first().unwrap());
         }
     }
     Ok(())
