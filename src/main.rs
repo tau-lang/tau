@@ -1,18 +1,17 @@
 #![allow(clippy::needless_return)]
 use crate::{
-    ast::statement::StmtVisitor,
     cli::{ArgsBuilder, HELP_MESSAGE},
     compiler::{
         Compiler,
         cpp::{CppCodeGenerator, CppHeaderGenerator},
-        replace_extension,
+        set_output,
     },
     header::Header,
     lexer::Lexer,
     parser::Parser,
     resolution::Resolution,
 };
-use std::{fs, path::PathBuf, rc::Rc, str::FromStr};
+use std::{fs, path::PathBuf, process::exit, rc::Rc, str::FromStr};
 
 mod ast;
 mod cli;
@@ -36,30 +35,33 @@ fn main() -> error::Result<()> {
     }
     Ok(())
 }
+
 fn compile_file(filename: &String, args: &cli::Args) -> error::Result<()> {
-    let content = fs::read_to_string(filename).expect("Expected to open file");
-    let lexer = Lexer::new(
-        content.chars(),
-        Rc::new(PathBuf::from_str(filename).unwrap()),
-    );
-    let parser = Parser::new(lexer.scan()?);
-    let ast = parser.parse()?;
-    let header = Header::new().headers(&ast);
-    let (types, fields) = header.analysed();
-    Resolution::new(&types, fields).resolve(&ast)?;
-    match args.get_target() {
-        cli::Target::Cpp => {
-            // TODO:
-            // respect the output paths specified
-            let compiler = Compiler::new(&ast);
-            let header_output = replace_extension(filename, "hpp");
-            compiler.compile(CppHeaderGenerator, &header_output)?;
-            let code_output = replace_extension(filename, "cpp");
-            compiler.compile(CppCodeGenerator::new(), &code_output)?;
+    if let Ok(content) = fs::read_to_string(filename) {
+        let lexer = Lexer::new(
+            content.chars(),
+            Rc::new(PathBuf::from_str(filename).unwrap()),
+        );
+        let parser = Parser::new(lexer.scan()?);
+        let ast = parser.parse()?;
+        let header = Header::new().headers(&ast);
+        let (types, fields) = header.analysed();
+        Resolution::new(&types, fields).resolve(&ast)?;
+        match args.get_target() {
+            cli::Target::Cpp => {
+                let compiler = Compiler::new(&ast);
+                let header_output = set_output(filename, args.get_output(), "hpp");
+                compiler.compile(CppHeaderGenerator, &header_output)?;
+                let code_output = set_output(filename, args.get_output(), "cpp");
+                compiler.compile(CppCodeGenerator::new(), &code_output)?;
+            }
+            cli::Target::Cranelift => todo!("hahaha i wish"),
         }
-        cli::Target::Cranelift => todo!("hahaha i wish"),
+        Ok(())
+    } else {
+        println!("tau: cannot access '{filename}: No such file");
+        exit(2);
     }
-    Ok(())
 }
 
 #[cfg(test)]
