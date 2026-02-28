@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, process::exit};
+use std::{collections::HashSet, env, process::exit, vec::IntoIter};
 
 #[derive(Default)]
 pub enum Target {
@@ -22,6 +22,8 @@ impl TryFrom<String> for Target {
 pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
   -o, --output      set the output directory
   -i, --input       append the input tau file
+  -t, --target      sets the compilation target
+                    accepts cpp and cranelift (tm)
   -h, --help        display this help message
 "#;
 
@@ -63,42 +65,65 @@ impl ArgsBuilder {
         let mut iter = args.into_iter();
         iter.next().expect("expect program exists");
         while let Some(arg) = iter.next() {
-            match arg.as_str() {
-                "-o" | "--output" => {
-                    if let Some(output) = iter.next() {
-                        self.args.output = output;
-                    } else {
-                        return Err("no output specified".into());
-                    }
-                }
-                "-i" | "--input" => {
-                    if let Some(input) = iter.next() {
-                        self.args.input.insert(input);
-                    } else {
-                        return Err("no input specified".into());
-                    }
-                }
-                "-t" | "--target" => {
-                    if let Some(target) = iter.next() {
-                        self.args.target = target.try_into()?;
-                    } else {
-                        return Err("no target specified".into());
-                    }
-                }
-                "-h" | "--help" => {
-                    println!("{}", HELP_MESSAGE);
-                    exit(0);
-                }
-                _ => {
-                    if let Some(input) = iter.next() {
-                        self.args.input.insert(input);
-                    } else {
-                        return Err("no input specified".into());
-                    }
-                }
+            if arg.starts_with('-') {
+                self.parse_option(arg.as_str(), &mut iter)?;
+            } else {
+                self.parse_file(iter.next())?;
             }
         }
         Ok(self)
+    }
+
+    fn parse_option(&mut self, name: &str, iter: &mut IntoIter<String>) -> Result<(), String> {
+        match name {
+            "-o" | "--output" => self.parse_output(iter.next()),
+            "-i" | "--input" => self.parse_input(iter.next()),
+            "-t" | "--target" => self.parse_target(iter.next()),
+            "-h" | "--help" => {
+                println!("{}", HELP_MESSAGE);
+                exit(0);
+            }
+            _ => {
+                println!("tau: invalid option '{name}'\nTry 'tau --help' for more information.");
+                exit(1);
+            }
+        }
+    }
+
+    fn parse_output(&mut self, next: Option<String>) -> Result<(), String> {
+        if let Some(output) = next {
+            self.args.output = output;
+            Ok(())
+        } else {
+            return Err("no output specified".into());
+        }
+    }
+
+    fn parse_input(&mut self, next: Option<String>) -> Result<(), String> {
+        if let Some(input) = next {
+            self.args.input.insert(input);
+            Ok(())
+        } else {
+            return Err("no input specified".into());
+        }
+    }
+
+    fn parse_target(&mut self, next: Option<String>) -> Result<(), String> {
+        if let Some(target) = next {
+            self.args.target = target.try_into()?;
+            Ok(())
+        } else {
+            return Err("no target specified".into());
+        }
+    }
+
+    fn parse_file(&mut self, next: Option<String>) -> Result<(), String> {
+        if let Some(input) = next {
+            self.args.input.insert(input);
+            Ok(())
+        } else {
+            return Err("no input specified".into());
+        }
     }
 
     pub fn build(self) -> Args {
