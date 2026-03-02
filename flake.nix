@@ -40,6 +40,11 @@
           pkg-config
           rust-bin.stable.latest.default
           rust-analyzer
+
+          # LLVM and dependencies
+          llvmPackages_latest.llvm
+          libxml2
+          libffi
         ];
         devDependencies = with pkgs; [
           bacon

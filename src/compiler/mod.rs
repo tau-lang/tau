@@ -2,6 +2,7 @@ use crate::{ast::declaration::Decl, error::Error};
 use std::path::{Path, PathBuf};
 
 pub mod cpp;
+pub mod llvm;
 
 pub fn replace_extension(path: &str, new_ext: &str) -> PathBuf {
     let mut path_buf = PathBuf::from(path);
