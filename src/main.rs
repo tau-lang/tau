@@ -11,7 +11,7 @@ use crate::{
     parser::Parser,
     resolution::Resolution,
 };
-use std::{fs, path::PathBuf, process::exit, rc::Rc, str::FromStr};
+use std::{fs, path::PathBuf, process::exit, rc::Rc};
 
 mod ast;
 mod cli;
@@ -36,12 +36,9 @@ fn main() -> error::Result<()> {
     Ok(())
 }
 
-fn compile_file(filename: &String, args: &cli::Args) -> error::Result<()> {
-    if let Ok(content) = fs::read_to_string(filename) {
-        let lexer = Lexer::new(
-            content.chars(),
-            Rc::new(PathBuf::from_str(filename).unwrap()),
-        );
+fn compile_file(filename: &Rc<PathBuf>, args: &cli::Args) -> error::Result<()> {
+    if let Ok(content) = fs::read_to_string(filename.as_path()) {
+        let lexer = Lexer::new(content.chars(), filename.clone());
         let parser = Parser::new(lexer.scan()?);
         let ast = parser.parse()?;
         let header = Header::new().headers(&ast);
@@ -50,16 +47,16 @@ fn compile_file(filename: &String, args: &cli::Args) -> error::Result<()> {
         match args.get_target() {
             cli::Target::Cpp => {
                 let compiler = Compiler::new(&ast);
-                let header_output = set_output(filename, args.get_output(), "hpp");
+                let header_output = set_output(filename.as_ref(), args.get_output(), "hpp");
                 compiler.compile(CppHeaderGenerator, &header_output)?;
-                let code_output = set_output(filename, args.get_output(), "cpp");
+                let code_output = set_output(filename.as_ref(), args.get_output(), "cpp");
                 compiler.compile(CppCodeGenerator::new(), &code_output)?;
             }
             cli::Target::Cranelift => todo!("hahaha i wish"),
         }
         Ok(())
     } else {
-        println!("tau: cannot access '{filename}: No such file");
+        println!("tau: cannot access '{}: No such file", filename.display());
         exit(2);
     }
 }

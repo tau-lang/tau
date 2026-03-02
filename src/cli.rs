@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, process::exit, vec::IntoIter};
+use std::{collections::HashSet, env, path::PathBuf, process::exit, rc::Rc, vec::IntoIter};
 
 #[derive(Default)]
 pub enum Target {
@@ -29,17 +29,17 @@ pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
 
 #[derive(Default)]
 pub struct Args {
-    input: HashSet<String>,
-    output: String,
+    input: HashSet<Rc<PathBuf>>,
+    output: PathBuf,
     target: Target,
 }
 
 impl Args {
-    pub fn get_input(&self) -> &HashSet<String> {
+    pub fn get_input(&self) -> &HashSet<Rc<PathBuf>> {
         &self.input
     }
 
-    pub fn get_output(&self) -> &String {
+    pub fn get_output(&self) -> &PathBuf {
         &self.output
     }
 
@@ -63,7 +63,8 @@ impl ArgsBuilder {
     pub fn parse(mut self) -> Result<Self, String> {
         let args: Vec<String> = env::args().collect();
         let mut iter = args.into_iter();
-        iter.next().expect("expect program exists");
+        iter.next()
+            .expect("expect program exists ($0) as firt command line argument");
         while let Some(arg) = iter.next() {
             if arg.starts_with('-') {
                 self.parse_option(arg.as_str(), &mut iter)?;
@@ -77,7 +78,7 @@ impl ArgsBuilder {
     fn parse_option(&mut self, name: &str, iter: &mut IntoIter<String>) -> Result<(), String> {
         match name {
             "-o" | "--output" => self.parse_output(iter.next()),
-            "-i" | "--input" => self.parse_input(iter.next()),
+            "-i" | "--input" => self.parse_file(iter.next()),
             "-t" | "--target" => self.parse_target(iter.next()),
             "-h" | "--help" => {
                 println!("{}", HELP_MESSAGE);
@@ -92,19 +93,10 @@ impl ArgsBuilder {
 
     fn parse_output(&mut self, next: Option<String>) -> Result<(), String> {
         if let Some(output) = next {
-            self.args.output = output;
+            self.args.output = PathBuf::from(output);
             Ok(())
         } else {
-            return Err("no output specified".into());
-        }
-    }
-
-    fn parse_input(&mut self, next: Option<String>) -> Result<(), String> {
-        if let Some(input) = next {
-            self.args.input.insert(input);
-            Ok(())
-        } else {
-            return Err("no input specified".into());
+            Err("no output specified".into())
         }
     }
 
@@ -113,16 +105,21 @@ impl ArgsBuilder {
             self.args.target = target.try_into()?;
             Ok(())
         } else {
-            return Err("no target specified".into());
+            Err("no target specified".into())
         }
     }
 
     fn parse_file(&mut self, next: Option<String>) -> Result<(), String> {
         if let Some(input) = next {
-            self.args.input.insert(input);
-            Ok(())
+            let path_buf = PathBuf::from(input);
+            if path_buf.exists() {
+                self.args.input.insert(Rc::new(path_buf));
+                Ok(())
+            } else {
+                Err("input file {} does not exists".into())
+            }
         } else {
-            return Err("no input specified".into());
+            Err("no input specified".into())
         }
     }
 

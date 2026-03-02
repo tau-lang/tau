@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 
 pub mod cpp;
 
-pub fn set_output(path: &str, folder: &str, extension: &str) -> PathBuf {
-    let mut path_buf = if folder != "" {
+pub fn set_output(path: &PathBuf, folder: &PathBuf, extension: &str) -> PathBuf {
+    let mut path_buf = if folder.as_os_str().is_empty() {
+        PathBuf::from(path)
+    } else {
         let mut path_buf = PathBuf::from(folder);
         path_buf.push(PathBuf::from(path).file_name().expect("path is a file"));
         path_buf
-    } else {
-        PathBuf::from(path)
     };
     path_buf.set_extension(extension);
     return path_buf;
