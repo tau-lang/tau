@@ -139,7 +139,9 @@ impl<'a> Resolution<'a> {
     }
 }
 
-impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
+impl<'a> ExprVisitor<'a> for Resolution<'a> {
+    type Output = Result<Rc<TypeDef>>;
+
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Result<Rc<TypeDef>> {
         let throw_error = |msg: &str| {
             Err(Error::new(vec![Diagnostic::new(
@@ -444,7 +446,9 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
     }
 }
 
-impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
+impl<'a> StmtVisitor<'a> for Resolution<'a> {
+    type Output = Result<Option<Rc<TypeDef>>>;
+
     fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Result<Option<Rc<TypeDef>>> {
         let mut errors = Option::None;
         self.begin_scope();
@@ -542,7 +546,9 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
     }
 }
 
-impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
+impl<'a> DeclVisitor<'a> for Resolution<'a> {
+    type Output = Result<()>;
+
     fn visit_import(&mut self, _: &[Identifier]) -> Result<()> {
         Ok(())
     }

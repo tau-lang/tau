@@ -18,7 +18,7 @@ use std::{
 };
 
 #[derive(Default, PartialEq, Debug)]
-struct CppSourceCode(String);
+pub struct CppSourceCode(String);
 
 impl Display for CppSourceCode {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -154,7 +154,9 @@ impl<'a> Generator<'a> for CppHeaderGenerator {
     }
 }
 
-impl DeclVisitor<'_, CppSourceCode> for CppHeaderGenerator {
+impl DeclVisitor<'_> for CppHeaderGenerator {
+    type Output = CppSourceCode;
+
     fn visit_import(&mut self, path: &[Identifier]) -> CppSourceCode {
         let path = path
             .iter()
@@ -285,7 +287,9 @@ impl<'a> Generator<'a> for CppCodeGenerator {
     }
 }
 
-impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
+impl<'a> ExprVisitor<'a> for CppCodeGenerator {
+    type Output = CppSourceCode;
+
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> CppSourceCode {
         match operator.get_type() {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
@@ -454,7 +458,9 @@ impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
     }
 }
 
-impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
+impl<'a> StmtVisitor<'a> for CppCodeGenerator {
+    type Output = CppSourceCode;
+
     fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> CppSourceCode {
         let statements = visit_vec(
             statements,
@@ -511,7 +517,9 @@ impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
     }
 }
 
-impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
+impl<'a> DeclVisitor<'a> for CppCodeGenerator {
+    type Output = CppSourceCode;
+
     fn visit_import(&mut self, _: &[Identifier]) -> CppSourceCode {
         CppSourceCode::default()
     }
