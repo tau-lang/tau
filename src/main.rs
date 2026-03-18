@@ -1,19 +1,20 @@
 #![allow(clippy::needless_return)]
 use crate::{
-    ast::statement::StmtVisitor,
+    cli::{ArgsBuilder, HELP_MESSAGE},
     compiler::{
         Compiler,
         cpp::{CppCodeGenerator, CppHeaderGenerator},
-        replace_extension,
+        set_output,
     },
     header::Header,
     lexer::Lexer,
     parser::Parser,
     resolution::Resolution,
 };
-use std::{collections::HashMap, env, fs, io, path::PathBuf, rc::Rc, str::FromStr};
+use std::{fs, path::PathBuf, process::exit, rc::Rc};
 
 mod ast;
+mod cli;
 mod compiler;
 mod error;
 mod header;
@@ -23,52 +24,41 @@ mod resolution;
 mod typing;
 
 fn main() -> error::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    match args.len() {
-        1 => {
-            let mut buffer = String::new();
-            while io::stdin().read_line(&mut buffer).is_ok() {
-                let lexer = Lexer::new(buffer.chars(), Rc::new(PathBuf::new()));
-                let tokens = lexer.scan()?;
-                // Check if user pressed ^D
-                if tokens.len() > 1 {
-                    let mut parser = Parser::new(tokens);
-                    let ast = parser.stmt()?;
-                    let (types, fields) = (HashMap::new(), HashMap::new());
-                    let mut resolution = Resolution::new(&types, fields);
-                    resolution.visit_stmt(&ast)?;
-                    println!("{:#?}", resolution);
-                    buffer.clear();
-                } else {
-                    break;
-                }
-            }
-        }
-        2 => {
-            let filename = args.get(1).unwrap();
-            let content = fs::read_to_string(filename).expect("Expected to open file");
-            let lexer = Lexer::new(
-                content.chars(),
-                Rc::new(PathBuf::from_str(filename).unwrap()),
-            );
-            let parser = Parser::new(lexer.scan()?);
-            let ast = parser.parse()?;
-            let header = Header::new().headers(&ast);
-            let (types, fields) = header.analysed();
-            let resolution = Resolution::new(&types, fields).resolve(&ast);
-            let _ = resolution?.analysed();
-            let compiler = Compiler::new(&ast);
-            let header_output = replace_extension(filename, "hpp");
-            compiler.compile(CppHeaderGenerator, &header_output)?;
-            let code_output = replace_extension(filename, "cpp");
-            compiler.compile(CppCodeGenerator::new(), &code_output)?;
-        }
-        _ => {
-            // TODO:
-            panic!("usage: {:?} [file]", args.first().unwrap());
+    let args = ArgsBuilder::new().parse().unwrap().build();
+    if args.get_input().is_empty() {
+        println!("{}", HELP_MESSAGE)
+    } else {
+        // guaranteed to not be empty
+        for filename in args.get_input() {
+            compile_file(filename, &args)?;
         }
     }
     Ok(())
+}
+
+fn compile_file(filename: &Rc<PathBuf>, args: &cli::Args) -> error::Result<()> {
+    if let Ok(content) = fs::read_to_string(filename.as_path()) {
+        let lexer = Lexer::new(content.chars(), filename.clone());
+        let parser = Parser::new(lexer.scan()?);
+        let ast = parser.parse()?;
+        let header = Header::new().headers(&ast);
+        let (types, fields) = header.analysed();
+        Resolution::new(&types, fields).resolve(&ast)?;
+        match args.get_target() {
+            cli::Target::Cpp => {
+                let compiler = Compiler::new(&ast);
+                let header_output = set_output(filename.as_ref(), args.get_output(), "hpp");
+                compiler.compile(CppHeaderGenerator, &header_output)?;
+                let code_output = set_output(filename.as_ref(), args.get_output(), "cpp");
+                compiler.compile(CppCodeGenerator::new(), &code_output)?;
+            }
+            cli::Target::Cranelift => todo!("hahaha i wish"),
+        }
+        Ok(())
+    } else {
+        println!("tau: cannot access '{}: No such file", filename.display());
+        exit(2);
+    }
 }
 
 #[cfg(test)]

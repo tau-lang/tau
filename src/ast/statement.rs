@@ -54,13 +54,13 @@ pub enum StmtType {
 pub trait StmtVisitor<'a, T> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) -> T {
         match stmt.kind() {
-            StmtType::Block { statements } => self.visit_block(&statements),
+            StmtType::Block { statements } => self.visit_block(statements),
             StmtType::Let {
                 name,
                 var_type,
                 initializer,
-            } => self.visit_let(&name, &var_type, &initializer),
-            StmtType::Return { value } => self.visit_return(&value),
+            } => self.visit_let(name, var_type, initializer),
+            StmtType::Return { value } => self.visit_return(value),
             StmtType::Break => self.visit_break(),
             StmtType::While { condition, body } => self.visit_while(condition, body),
             StmtType::For {
