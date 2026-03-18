@@ -1,4 +1,11 @@
-use std::{collections::HashSet, env, path::PathBuf, process::exit, rc::Rc, vec::IntoIter};
+use std::{
+    collections::HashSet,
+    env,
+    path::{Path, PathBuf},
+    process::exit,
+    rc::Rc,
+    vec::IntoIter,
+};
 
 #[derive(Default)]
 pub enum Target {
@@ -39,7 +46,7 @@ impl Args {
         &self.input
     }
 
-    pub fn get_output(&self) -> &PathBuf {
+    pub fn get_output(&self) -> &Path {
         &self.output
     }
 

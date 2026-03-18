@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub mod cpp;
 
-pub fn set_output(path: &PathBuf, folder: &PathBuf, extension: &str) -> PathBuf {
+pub fn set_output(path: &Path, folder: &Path, extension: &str) -> PathBuf {
     let mut path_buf = if folder.as_os_str().is_empty() {
         PathBuf::from(path)
     } else {
