@@ -128,8 +128,9 @@ pub enum TokenType {
     BracketLeft,  // [
     BracketRight, // ]
     Dot,
-    Comma,
-    Colon,
+    Comma, // ,
+    Colon, // :
+    To,    // ->
 
     // Operators
     Add,
@@ -154,6 +155,7 @@ pub enum TokenType {
 
     // Keywords
     Import,
+    Procedure,
     Function,
     Struct,
     Enum,
@@ -243,6 +245,8 @@ impl Lexer<'_> {
                 '-' => {
                     if self.matchc('=') {
                         TokenType::SetSub
+                    } else if self.matchc('>') {
+                        TokenType::To
                     } else {
                         TokenType::Sub
                     }
@@ -355,7 +359,8 @@ impl Lexer<'_> {
         Ok(match text.as_str() {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
-            "fn" => TokenType::Function,
+            "proc" => TokenType::Procedure,
+            "func" => TokenType::Function,
             "const" => TokenType::Const,
             "extern" => TokenType::Extern,
             "let" => TokenType::Let,

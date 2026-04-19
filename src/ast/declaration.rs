@@ -12,7 +12,7 @@ pub enum Decl {
         fields: Vec<(Identifier, TypeCell)>,
         methods: Vec<Rc<Decl>>,
     },
-    Function {
+    Procedure {
         name: Identifier,
         return_type: TypeCell,
         params: Vec<(Identifier, TypeCell)>,
@@ -37,13 +37,13 @@ pub trait DeclVisitor<'a> {
                 fields,
                 methods,
             } => self.visit_struct(name, fields, methods),
-            Decl::Function {
+            Decl::Procedure {
                 name,
                 return_type,
                 params,
                 body,
                 is_extern,
-            } => self.visit_function(name, return_type, params, body, *is_extern),
+            } => self.visit_procedure(name, return_type, params, body, *is_extern),
             Decl::Const {
                 name,
                 var_type,
@@ -61,7 +61,7 @@ pub trait DeclVisitor<'a> {
         methods: &'a [Rc<Decl>],
     ) -> Self::Output;
 
-    fn visit_function(
+    fn visit_procedure(
         &mut self,
         name: &'a Identifier,
         return_type: &'a TypeCell,

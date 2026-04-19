@@ -22,10 +22,8 @@ pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
-const YELLOW: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
 const BLUE: &str = "\x1b[34m";
-const GREEN: &str = "\x1b[93m";
 
 pub struct Error(Vec<Diagnostic>);
 

@@ -176,7 +176,7 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         let methods = visit_vec(
             methods,
             |decl| {
-                if let Decl::Function {
+                if let Decl::Procedure {
                     name,
                     return_type,
                     params,
@@ -194,7 +194,7 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         format!("class {name} {{\npublic:\n{fields}\n{methods}\n}};").into()
     }
 
-    fn visit_function(
+    fn visit_procedure(
         &mut self,
         name: &Identifier,
         return_type: &TypeCell,
@@ -533,7 +533,7 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         visit_vec(
             methods,
             |method| {
-                if let Decl::Function {
+                if let Decl::Procedure {
                     name,
                     return_type,
                     params,
@@ -557,7 +557,7 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         )
     }
 
-    fn visit_function(
+    fn visit_procedure(
         &mut self,
         name: &Identifier,
         return_type: &TypeCell,

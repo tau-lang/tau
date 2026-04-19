@@ -141,7 +141,7 @@ impl<'a> DeclVisitor<'a> for Header {
             );
         }
         for decl in methods {
-            if let Decl::Function {
+            if let Decl::Procedure {
                 name,
                 return_type,
                 params,
@@ -164,7 +164,7 @@ impl<'a> DeclVisitor<'a> for Header {
         );
     }
 
-    fn visit_function(
+    fn visit_procedure(
         &mut self,
         name: &'a Identifier,
         return_type: &'a TypeCell,

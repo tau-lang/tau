@@ -47,6 +47,7 @@ impl Parser {
             TokenType::Const => self.decl_const(),
             TokenType::Extern => self.decl_extern(),
             TokenType::Function => self.decl_function(false),
+            TokenType::Procedure => self.decl_procedure(false),
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
             t => Err(parser_expected(
@@ -74,11 +75,15 @@ impl Parser {
         let token = self.advance();
         match token.get_type() {
             TokenType::Function => self.decl_function(true),
-            _ => todo!("unimplemented decl: {:?}", token),
+            TokenType::Procedure => self.decl_procedure(true),
+            _ => Err(parser_expected(
+                "can only use extern for procedures and functions",
+                token,
+            )),
         }
     }
 
-    fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
+    fn decl_procedure(&mut self, is_extern: bool) -> Result<Decl> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
             return Err(parser_expected("expected an function identifier", name));
@@ -94,8 +99,8 @@ impl Parser {
         }
         self.consume(&TokenType::ParenRight)?;
 
-        let return_type = if *self.peek().get_type() == TokenType::Colon {
-            self.consume(&TokenType::Colon)?;
+        let return_type = if *self.peek().get_type() == TokenType::To {
+            self.consume(&TokenType::To)?;
             let type_name = self.advance();
             if !type_name.get_type().is_identifer() {
                 return Err(parser_expected(
@@ -117,7 +122,53 @@ impl Parser {
             self.consume(&TokenType::BraceRight)?;
         }
 
-        Ok(Decl::Function {
+        Ok(Decl::Procedure {
+            name: Identifier::from(name),
+            return_type: RefCell::new(Rc::new(return_type)),
+            params,
+            body,
+            is_extern,
+        })
+    }
+
+    fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
+        let name = self.advance();
+        if !name.get_type().is_identifer() {
+            return Err(parser_expected("expected an function identifier", name));
+        }
+
+        self.consume(&TokenType::ParenLeft)?;
+        let mut params = Vec::new();
+        while *self.peek().get_type() != TokenType::ParenRight {
+            params.push(self.decl_type_def()?);
+            if *self.peek().get_type() != TokenType::ParenRight {
+                self.consume(&TokenType::Comma)?;
+            }
+        }
+        self.consume(&TokenType::ParenRight)?;
+
+        let return_type = if *self.peek().get_type() == TokenType::To {
+            self.consume(&TokenType::To)?;
+            let type_name = self.advance();
+            if !type_name.get_type().is_identifer() {
+                return Err(parser_expected(
+                    "expected a return type identifier",
+                    type_name,
+                ));
+            }
+            TypeDef::Lazy(type_name.identifier().to_string())
+        } else {
+            TypeDef::Lazy("void".to_string())
+        };
+
+        let mut body = Vec::new();
+        if !is_extern {
+            self.consume(&TokenType::Set)?;
+            let value = self.expr()?;
+            body.push(Stmt::new(value.source(), StmtType::Return { value }));
+        }
+
+        Ok(Decl::Procedure {
             name: Identifier::from(name),
             return_type: RefCell::new(Rc::new(return_type)),
             params,
@@ -156,8 +207,12 @@ impl Parser {
 
         let mut methods = Vec::new();
         while *self.peek().get_type() != TokenType::BraceRight {
-            self.consume(&TokenType::Function)?;
-            methods.push(Rc::new(self.decl_function(false)?));
+            let next = self.advance();
+            methods.push(match next.get_type() {
+                TokenType::Procedure => Ok(Rc::new(self.decl_procedure(false)?)),
+                TokenType::Function => Ok(Rc::new(self.decl_function(false)?)),
+                _ => Err(parser_expected("expected procedure or function", next)),
+            }?);
         }
 
         self.consume(&TokenType::BraceRight)?;
@@ -202,6 +257,7 @@ impl Parser {
                 let current = self.advance();
                 Ok(Stmt::new(current.get_source(), StmtType::Break))
             }
+            TokenType::For => self.stmt_for(),
             TokenType::While => self.stmt_while(),
             _ => {
                 let expr = self.expr()?;
@@ -250,6 +306,27 @@ impl Parser {
                 name: Identifier::from(name),
                 var_type: RefCell::new(Rc::new(var_type)),
                 initializer,
+            },
+        ))
+    }
+
+    fn stmt_for(&mut self) -> Result<Stmt> {
+        let current = self.advance();
+        self.consume(&TokenType::ParenLeft)?;
+        let initializer = Rc::new(self.stmt()?);
+        self.consume(&TokenType::Colon)?;
+        let condition = self.expr()?;
+        self.consume(&TokenType::Colon)?;
+        let increment = self.expr()?;
+        self.consume(&TokenType::ParenRight)?;
+        let body = Rc::new(self.stmt()?);
+        Ok(Stmt::new(
+            Source::union(&current.get_source(), &body.source()),
+            StmtType::For {
+                initializer,
+                condition,
+                increment,
+                body,
             },
         ))
     }

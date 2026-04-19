@@ -39,10 +39,6 @@ impl<'a> Resolution<'a> {
         Ok(self)
     }
 
-    pub fn analysed(self) -> Vec<Rc<RefCell<TypeNames>>> {
-        self.scopes
-    }
-
     fn declare_variable(&mut self, var_name: &Identifier, var_type: Rc<TypeDef>) -> Result<()> {
         if (*self
             .scopes
@@ -139,7 +135,9 @@ impl<'a> Resolution<'a> {
     }
 }
 
-impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
+impl<'a> ExprVisitor<'a> for Resolution<'a> {
+    type Output = Result<Rc<TypeDef>>;
+
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Result<Rc<TypeDef>> {
         let throw_error = |msg: &str| {
             Err(Error::new(vec![Diagnostic::new(
@@ -444,8 +442,10 @@ impl<'a> ExprVisitor<'a, Result<Rc<TypeDef>>> for Resolution<'a> {
     }
 }
 
-impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Result<Option<Rc<TypeDef>>> {
+impl<'a> StmtVisitor<'a> for Resolution<'a> {
+    type Output = Result<Option<Rc<TypeDef>>>;
+
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Self::Output {
         let mut errors = Option::None;
         self.begin_scope();
         for stmt in statements {
@@ -471,7 +471,7 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
         name: &'a Identifier,
         var_type: &'a TypeCell,
         initializer: &'a Expr,
-    ) -> Result<Option<Rc<TypeDef>>> {
+    ) -> Self::Output {
         let mut real_type = self.visit_expr(initializer)?;
         if let TypeDef::Lazy(expected_type) = var_type.borrow().as_ref() {
             let ref_type = self.get_type(expected_type)?;
@@ -489,20 +489,16 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
         Ok(None)
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> Result<Option<Rc<TypeDef>>> {
+    fn visit_return(&mut self, value: &'a Expr) -> Self::Output {
         self.return_type = Some(self.visit_expr(value)?);
         Ok(None)
     }
 
-    fn visit_break(&mut self) -> Result<Option<Rc<TypeDef>>> {
+    fn visit_break(&mut self) -> Self::Output {
         Ok(None)
     }
 
-    fn visit_while(
-        &mut self,
-        condition: &'a Expr,
-        body: &'a Rc<Stmt>,
-    ) -> Result<Option<Rc<TypeDef>>> {
+    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output {
         self.begin_scope();
         if !self.visit_expr(condition)?.is_bool() {
             Err(Error::new(vec![Diagnostic::new(
@@ -521,7 +517,7 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
         condition: &'a Expr,
         increment: &'a Expr,
         body: &'a Rc<Stmt>,
-    ) -> Result<Option<Rc<TypeDef>>> {
+    ) -> Self::Output {
         self.begin_scope();
         self.visit_stmt(initializer)?;
         if !self.visit_expr(condition)?.is_bool() {
@@ -537,12 +533,14 @@ impl<'a> StmtVisitor<'a, Result<Option<Rc<TypeDef>>>> for Resolution<'a> {
         Ok(None)
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Result<Option<Rc<TypeDef>>> {
+    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
         Ok(Some(self.visit_expr(expr)?))
     }
 }
 
-impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
+impl<'a> DeclVisitor<'a> for Resolution<'a> {
+    type Output = Result<()>;
+
     fn visit_import(&mut self, _: &[Identifier]) -> Result<()> {
         Ok(())
     }
@@ -573,7 +571,7 @@ impl<'a> DeclVisitor<'a, Result<()>> for Resolution<'a> {
         Ok(())
     }
 
-    fn visit_function(
+    fn visit_procedure(
         &mut self,
         identifier: &'a Identifier,
         return_type: &'a TypeCell,
