@@ -98,7 +98,9 @@ impl Header {
     }
 }
 
-impl<'a> DeclVisitor<'a, ()> for Header {
+impl<'a> DeclVisitor<'a> for Header {
+    type Output = ();
+
     fn visit_import(&mut self, path: &[Identifier]) {
         let mut module_name = "";
         let filename = {

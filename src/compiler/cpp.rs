@@ -18,7 +18,7 @@ use std::{
 };
 
 #[derive(Default, PartialEq, Debug)]
-struct CppSourceCode(String);
+pub struct CppSourceCode(String);
 
 impl Display for CppSourceCode {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -154,7 +154,8 @@ impl<'a> Generator<'a> for CppHeaderGenerator {
     }
 }
 
-impl DeclVisitor<'_, CppSourceCode> for CppHeaderGenerator {
+impl DeclVisitor<'_> for CppHeaderGenerator {
+    type Output = CppSourceCode;
     fn visit_import(&mut self, path: &[Identifier]) -> CppSourceCode {
         let path = path
             .iter()
@@ -285,7 +286,9 @@ impl<'a> Generator<'a> for CppCodeGenerator {
     }
 }
 
-impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
+impl<'a> ExprVisitor<'a> for CppCodeGenerator {
+    type Output = CppSourceCode;
+
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> CppSourceCode {
         match operator.get_type() {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
@@ -454,8 +457,10 @@ impl<'a> ExprVisitor<'a, CppSourceCode> for CppCodeGenerator {
     }
 }
 
-impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> CppSourceCode {
+impl<'a> StmtVisitor<'a> for CppCodeGenerator {
+    type Output = CppSourceCode;
+
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Self::Output {
         let statements = visit_vec(
             statements,
             |stmt| format!("{}", self.visit_stmt(stmt)),
@@ -476,16 +481,16 @@ impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
         format!("{var_type} {name} = {initializer};").into()
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> CppSourceCode {
+    fn visit_return(&mut self, value: &'a Expr) -> Self::Output {
         let value = self.visit_expr(value);
         format!("return {value};").into()
     }
 
-    fn visit_break(&mut self) -> CppSourceCode {
+    fn visit_break(&mut self) -> Self::Output {
         "break;".to_string().into()
     }
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> CppSourceCode {
+    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output {
         let condition = self.visit_expr(condition);
         let body = self.visit_stmt(body);
         format!("while ({condition}) {body}").into()
@@ -497,7 +502,7 @@ impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
         condition: &'a Expr,
         increment: &'a Expr,
         body: &'a Rc<Stmt>,
-    ) -> CppSourceCode {
+    ) -> Self::Output {
         let initializer = self.visit_stmt(initializer);
         let condition = self.visit_expr(condition);
         let increment = self.visit_expr(increment);
@@ -505,14 +510,16 @@ impl<'a> StmtVisitor<'a, CppSourceCode> for CppCodeGenerator {
         format!("for ({initializer}; {condition}; {increment}) {body}").into()
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> CppSourceCode {
+    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
         let expr = self.visit_expr(expr);
         format!("{expr};").into()
     }
 }
 
-impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
-    fn visit_import(&mut self, _: &[Identifier]) -> CppSourceCode {
+impl<'a> DeclVisitor<'a> for CppCodeGenerator {
+    type Output = CppSourceCode;
+
+    fn visit_import(&mut self, _: &[Identifier]) -> Self::Output {
         CppSourceCode::default()
     }
 
@@ -557,7 +564,7 @@ impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
         params: &[(Identifier, TypeCell)],
         body: &'_ [Stmt],
         is_extern: bool,
-    ) -> CppSourceCode {
+    ) -> Self::Output {
         if name.get_name() == "main" {
             self.main_type = Some(return_type.borrow().clone())
         }
@@ -576,7 +583,7 @@ impl<'a> DeclVisitor<'a, CppSourceCode> for CppCodeGenerator {
         name: &Identifier,
         var_type: &TypeCell,
         initializer: &'_ Expr,
-    ) -> CppSourceCode {
+    ) -> Self::Output {
         let name = CppSourceCode::from(name);
         let var_type = CppSourceCode::from(var_type);
         let initializer = self.visit_expr(initializer);

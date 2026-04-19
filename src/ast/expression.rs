@@ -74,8 +74,10 @@ impl Expr {
     }
 }
 
-pub trait ExprVisitor<'a, T> {
-    fn visit_expr(&mut self, expr: &'a Expr) -> T {
+pub trait ExprVisitor<'a> {
+    type Output;
+
+    fn visit_expr(&mut self, expr: &'a Expr) -> Self::Output {
         match expr.kind() {
             ExprKind::Unary { operator, right } => self.visit_unary(operator, right),
             ExprKind::Binary {
@@ -117,29 +119,43 @@ pub trait ExprVisitor<'a, T> {
         }
     }
 
-    fn visit_unary(&mut self, operator: &'a Token, right: &'a Rc<Expr>) -> T;
+    fn visit_unary(&mut self, operator: &'a Token, right: &'a Rc<Expr>) -> Self::Output;
 
-    fn visit_binary(&mut self, left: &'a Rc<Expr>, operator: &'a Token, right: &'a Rc<Expr>) -> T;
+    fn visit_binary(
+        &mut self,
+        left: &'a Rc<Expr>,
+        operator: &'a Token,
+        right: &'a Rc<Expr>,
+    ) -> Self::Output;
 
-    fn visit_get(&mut self, left: &'a Rc<Expr>, right: &'a Identifier, lookup: &'a TypeCell) -> T;
+    fn visit_get(
+        &mut self,
+        left: &'a Rc<Expr>,
+        right: &'a Identifier,
+        lookup: &'a TypeCell,
+    ) -> Self::Output;
 
-    fn visit_index(&mut self, object: &'a Rc<Expr>, index: &'a Rc<Expr>, lookup: &'a TypeCell)
-    -> T;
+    fn visit_index(
+        &mut self,
+        object: &'a Rc<Expr>,
+        index: &'a Rc<Expr>,
+        lookup: &'a TypeCell,
+    ) -> Self::Output;
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> T;
+    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Self::Output;
 
     fn visit_create_array(
         &mut self,
         array_type: &'a TypeCell,
         array_size: &'a Option<Rc<Expr>>,
         fields: &'a [Rc<Expr>],
-    ) -> T;
+    ) -> Self::Output;
 
     fn visit_create_struct(
         &mut self,
         struct_name: &'a TypeCell,
         fields: &'a [(Identifier, Rc<Expr>)],
-    ) -> T;
+    ) -> Self::Output;
 
     fn visit_if(
         &mut self,
@@ -147,9 +163,9 @@ pub trait ExprVisitor<'a, T> {
         if_branch: &'a Rc<Stmt>,
         else_branch: &'a Option<Rc<Stmt>>,
         expression_result: &'a TypeCell,
-    ) -> T;
+    ) -> Self::Output;
 
-    fn visit_literal(&mut self, value: &'a Token) -> T;
+    fn visit_literal(&mut self, value: &'a Token) -> Self::Output;
 
-    fn visit_variable(&mut self, name: &'a Identifier, var_type: &'a TypeCell) -> T;
+    fn visit_variable(&mut self, name: &'a Identifier, var_type: &'a TypeCell) -> Self::Output;
 }
