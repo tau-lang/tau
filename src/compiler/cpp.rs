@@ -182,6 +182,7 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
                     params,
                     body: _,
                     is_extern: _,
+                    is_io: _,
                 } = decl.as_ref()
                 {
                     format!("  {}", self.visit_method(name, return_type, params))
@@ -194,13 +195,14 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         format!("class {name} {{\npublic:\n{fields}\n{methods}\n}};").into()
     }
 
-    fn visit_procedure(
+    fn visit_function(
         &mut self,
         name: &Identifier,
         return_type: &TypeCell,
         params: &[(Identifier, TypeCell)],
         _: &[Stmt],
         is_extern: bool,
+        _: bool,
     ) -> CppSourceCode {
         let name = CppSourceCode::from(name);
         let is_extern = if is_extern { "\"C\" " } else { "" };
@@ -539,6 +541,7 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
                     params,
                     body,
                     is_extern,
+                    is_io: _,
                 } = method.as_ref()
                 {
                     format!("{}", self.visit_method(
@@ -557,13 +560,14 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         )
     }
 
-    fn visit_procedure(
+    fn visit_function(
         &mut self,
         name: &Identifier,
         return_type: &TypeCell,
         params: &[(Identifier, TypeCell)],
         body: &'_ [Stmt],
         is_extern: bool,
+        _: bool,
     ) -> Self::Output {
         if name.get_name() == "main" {
             self.main_type = Some(return_type.borrow().clone())

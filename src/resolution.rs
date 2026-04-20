@@ -541,7 +541,7 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
 impl<'a> DeclVisitor<'a> for Resolution<'a> {
     type Output = Result<()>;
 
-    fn visit_import(&mut self, _: &[Identifier]) -> Result<()> {
+    fn visit_import(&mut self, _: &[Identifier]) -> Self::Output {
         Ok(())
     }
 
@@ -550,7 +550,7 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         name: &'a Identifier,
         members: &'a [(Identifier, TypeCell)],
         methods: &'a [Rc<Decl>],
-    ) -> Result<()> {
+    ) -> Self::Output {
         self.begin_scope();
         let struct_type = self
             .types
@@ -571,14 +571,15 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         Ok(())
     }
 
-    fn visit_procedure(
+    fn visit_function(
         &mut self,
         identifier: &'a Identifier,
         return_type: &'a TypeCell,
         params: &'a [(Identifier, TypeCell)],
         body: &'a [Stmt],
         is_extern: bool,
-    ) -> Result<()> {
+        _: bool,
+    ) -> Self::Output {
         if self.return_type.is_some() {
             Err(Error::new(vec![Diagnostic::new(
                 "return type already exists before body was defined".to_string(),
@@ -634,7 +635,7 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         _: &'a Identifier,
         var_type: &'a TypeCell,
         initializer: &'a Expr,
-    ) -> Result<()> {
+    ) -> Self::Output {
         let ref_type = self.get_ref_type(var_type.borrow().clone())?;
         if !(ref_type.clone() == self.visit_expr(initializer).unwrap()) {
             Err(Error::new(vec![Diagnostic::new(

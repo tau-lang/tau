@@ -164,12 +164,13 @@ impl<'a> DeclVisitor<'a> for Header {
         );
     }
 
-    fn visit_procedure(
+    fn visit_function(
         &mut self,
         name: &'a Identifier,
         return_type: &'a TypeCell,
         params: &'a [(Identifier, TypeCell)],
         _: &[Stmt],
+        _: bool,
         _: bool,
     ) {
         self.fields.insert(

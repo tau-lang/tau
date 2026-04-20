@@ -45,19 +45,13 @@ impl Parser {
         }
         match token.get_type() {
             TokenType::Const => self.decl_const(),
-            TokenType::Extern => self.decl_extern(),
+            TokenType::Extern => self.decl_modifier(true, false),
+            TokenType::Io => self.decl_modifier(false, true),
             TokenType::Function => self.decl_function(false, false),
-            TokenType::Io => {
-                self.consume(&TokenType::Function)?;
-                self.decl_function(false, false)
-            }
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
             t => Err(parser_expected(
-                format!(
-                    "Found {:?} expected import, function, struct or const",
-                    t.clone()
-                ),
+                format!("Found {:?} expected import, function, struct or const", &t),
                 token,
             )),
         }
@@ -74,12 +68,26 @@ impl Parser {
         })
     }
 
-    fn decl_extern(&mut self) -> Result<Decl> {
+    fn decl_modifier(&mut self, is_extern: bool, is_io: bool) -> Result<Decl> {
         let token = self.advance();
         match token.get_type() {
-            TokenType::Function => self.decl_function(true, true),
+            TokenType::Extern => {
+                if is_extern {
+                    Err(parser_expected("function is already extern", token))
+                } else {
+                    self.decl_modifier(true, is_io)
+                }
+            }
+            TokenType::Io => {
+                if is_io {
+                    Err(parser_expected("function is already io", token))
+                } else {
+                    self.decl_modifier(is_extern, true)
+                }
+            }
+            TokenType::Function => self.decl_function(is_extern, is_io),
             _ => Err(parser_expected(
-                "can only use extern for procedures and functions",
+                "unexpected return type, expected modifier or function",
                 token,
             )),
         }
@@ -136,6 +144,7 @@ impl Parser {
             params,
             body,
             is_extern,
+            is_io,
         })
     }
 

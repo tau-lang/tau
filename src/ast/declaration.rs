@@ -18,6 +18,7 @@ pub enum Decl {
         params: Vec<(Identifier, TypeCell)>,
         body: Vec<Stmt>,
         is_extern: bool,
+        is_io: bool,
     },
     Const {
         name: Identifier,
@@ -43,7 +44,8 @@ pub trait DeclVisitor<'a> {
                 params,
                 body,
                 is_extern,
-            } => self.visit_procedure(name, return_type, params, body, *is_extern),
+                is_io,
+            } => self.visit_function(name, return_type, params, body, *is_extern, *is_io),
             Decl::Const {
                 name,
                 var_type,
@@ -61,13 +63,14 @@ pub trait DeclVisitor<'a> {
         methods: &'a [Rc<Decl>],
     ) -> Self::Output;
 
-    fn visit_procedure(
+    fn visit_function(
         &mut self,
         name: &'a Identifier,
         return_type: &'a TypeCell,
         params: &'a [(Identifier, TypeCell)],
         body: &'a [Stmt],
         is_extern: bool,
+        is_io: bool,
     ) -> Self::Output;
 
     fn visit_const(
