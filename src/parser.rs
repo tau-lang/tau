@@ -123,20 +123,11 @@ impl Parser {
             TypeDef::Lazy("void".to_string())
         };
 
-        let mut body = Vec::new();
-        if !is_extern {
-            if self.peek().get_type() == &TokenType::BraceLeft {
-                self.consume(&TokenType::BraceLeft)?;
-                while *self.peek().get_type() != TokenType::BraceRight {
-                    body.push(self.stmt()?);
-                }
-                self.consume(&TokenType::BraceRight)?;
-            } else {
-                self.consume(&TokenType::Set)?;
-                let value = self.expr()?;
-                body.push(Stmt::new(value.source(), StmtType::Return { value }));
-            }
-        }
+        let body = if is_extern {
+            Vec::new()
+        } else {
+            self.decl_body()?
+        };
 
         Ok(Decl::Function {
             name: Identifier::from(name),
@@ -146,6 +137,29 @@ impl Parser {
             is_extern,
             is_io,
         })
+    }
+
+    fn decl_body(&mut self) -> Result<Vec<Stmt>> {
+        let mut body = Vec::new();
+        if self.peek().get_type() == &TokenType::BraceLeft {
+            self.consume(&TokenType::BraceLeft)?;
+            while *self.peek().get_type() != TokenType::BraceRight {
+                body.push(self.stmt()?);
+            }
+            self.consume(&TokenType::BraceRight)?;
+        } else {
+            self.consume(&TokenType::Set)?;
+            if *self.peek().get_type() == TokenType::Let {
+                self.advance();
+                while *self.peek().get_type() != TokenType::In {
+                    body.push(self.stmt_let(true)?);
+                }
+                self.consume(&TokenType::In)?;
+            }
+            let value = self.expr()?;
+            body.push(Stmt::new(value.source(), StmtType::Return { value }));
+        }
+        Ok(body)
     }
 
     fn decl_import(&mut self) -> Result<Decl> {
@@ -217,7 +231,7 @@ impl Parser {
         let peek = self.peek();
         match peek.get_type() {
             TokenType::BraceLeft => self.stmt_block(),
-            TokenType::Let => self.stmt_let(),
+            TokenType::Let => self.stmt_let(false),
             TokenType::Return => {
                 let current = self.advance();
                 Ok(Stmt::new(
@@ -253,9 +267,13 @@ impl Parser {
         ))
     }
 
-    fn stmt_let(&mut self) -> Result<Stmt> {
-        let current = self.advance();
-        let name = self.advance();
+    fn stmt_let(&mut self, skip_let: bool) -> Result<Stmt> {
+        let (start, name) = if skip_let {
+            let next = self.advance();
+            (next.clone(), next)
+        } else {
+            (self.advance(), self.advance())
+        };
         if !name.get_type().is_identifer() {
             return Err(parser_expected("expected a variable identifier", name));
         }
@@ -275,7 +293,7 @@ impl Parser {
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         Ok(Stmt::new(
-            Source::union(&current.get_source(), &initializer.source()),
+            Source::union(&start.get_source(), &initializer.source()),
             StmtType::Let {
                 name: Identifier::from(name),
                 var_type: RefCell::new(Rc::new(var_type)),

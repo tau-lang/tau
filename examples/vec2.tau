@@ -27,6 +27,20 @@ struct vec2 {
         return self
     }
 
+    fn diff(other: vec2) -> vec2 =
+        let
+            dx = self.x - other.x
+            dy = self.y - other.y
+        in
+            vec2 { x=dx, y=dy }
+
+    fn midpoint(other: vec2) -> vec2 =
+        let
+            mx = (self.x + other.x) * 0.5
+            my = (self.y + other.y) * 0.5
+        in
+            vec2 { x=mx, y=my }
+
     fn copy() -> vec2 = vec2_new(self.x, self.y)
 
     fn magnitude() -> f64 =

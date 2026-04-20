@@ -156,6 +156,7 @@ pub enum TokenType {
     // Keywords
     Import,
     Io,
+    In,
     Function,
     Struct,
     Enum,
@@ -360,6 +361,7 @@ impl Lexer<'_> {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
             "io" => TokenType::Io,
+            "in" => TokenType::In,
             "fn" => TokenType::Function,
             "const" => TokenType::Const,
             "extern" => TokenType::Extern,
