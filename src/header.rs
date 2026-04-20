@@ -141,7 +141,7 @@ impl<'a> DeclVisitor<'a> for Header {
             );
         }
         for decl in methods {
-            if let Decl::Procedure {
+            if let Decl::Function {
                 name,
                 return_type,
                 params,

@@ -1,24 +1,24 @@
-extern func sqrt(v: f64) -> f64
+extern fn sqrt(v: f64) -> f64
 
-extern proc println(v: str)
+extern fn println(v: str)
 
 struct vec2 {
     x: f64,
     y: f64
 
-    proc add(x: f64, y: f64) -> vec2 {
+    fn add(x: f64, y: f64) -> vec2 {
         self.x += x
         self.y += y
         return self
     }
 
-    proc sub(x: f64, y: f64) -> vec2 {
+    fn sub(x: f64, y: f64) -> vec2 {
         self.x -= x
         self.y -= y
         return self
     }
 
-    proc norm() -> vec2 {
+    fn norm() -> vec2 {
         let mag = self.magnitude()
         if (mag != 0) {
             self.x /= mag
@@ -27,18 +27,18 @@ struct vec2 {
         return self
     }
 
-    func copy() -> vec2 = vec2_new(self.x, self.y)
+    fn copy() -> vec2 = vec2_new(self.x, self.y)
 
-    func magnitude() -> f64 =
+    fn magnitude() -> f64 =
         sqrt(self.x * self.x + self.y * self.y)
 }
 
 const ZERO: vec2 = vec2 { x=0, y=0 }
 
-func vec2_new(x: f64, y: f64) -> vec2 =
+fn vec2_new(x: f64, y: f64) -> vec2 =
     vec2 { x=x, y=y }
 
-proc main() {
+io fn main() {
     let _a: vec2 = vec2_new(3, 4).add(4, -2)
     println("Hello, World!")
 }

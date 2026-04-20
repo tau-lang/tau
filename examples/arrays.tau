@@ -1,10 +1,10 @@
-extern proc println(data: str)
+extern fn println(data: str)
 
-extern proc i32_to_str(input: i32) -> str
+extern fn i32_to_str(input: i32) -> str
 
-func plus1(i: i32) -> i32 = i + 1
+fn plus1(i: i32) -> i32 = i + 1
 
-proc main() {
+io fn main() {
     let a = i32[2 * 8] { 0, 0 }
     let i = 0
     while (i < 16) {

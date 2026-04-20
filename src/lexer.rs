@@ -155,7 +155,7 @@ pub enum TokenType {
 
     // Keywords
     Import,
-    Procedure,
+    Io,
     Function,
     Struct,
     Enum,
@@ -359,8 +359,8 @@ impl Lexer<'_> {
         Ok(match text.as_str() {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
-            "proc" => TokenType::Procedure,
-            "func" => TokenType::Function,
+            "io" => TokenType::Io,
+            "fn" => TokenType::Function,
             "const" => TokenType::Const,
             "extern" => TokenType::Extern,
             "let" => TokenType::Let,

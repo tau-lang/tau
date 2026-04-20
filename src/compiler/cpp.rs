@@ -176,7 +176,7 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         let methods = visit_vec(
             methods,
             |decl| {
-                if let Decl::Procedure {
+                if let Decl::Function {
                     name,
                     return_type,
                     params,
@@ -533,7 +533,7 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         visit_vec(
             methods,
             |method| {
-                if let Decl::Procedure {
+                if let Decl::Function {
                     name,
                     return_type,
                     params,

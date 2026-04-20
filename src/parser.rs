@@ -46,8 +46,11 @@ impl Parser {
         match token.get_type() {
             TokenType::Const => self.decl_const(),
             TokenType::Extern => self.decl_extern(),
-            TokenType::Function => self.decl_function(false),
-            TokenType::Procedure => self.decl_procedure(false),
+            TokenType::Function => self.decl_function(false, false),
+            TokenType::Io => {
+                self.consume(&TokenType::Function)?;
+                self.decl_function(false, false)
+            }
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
             t => Err(parser_expected(
@@ -74,8 +77,7 @@ impl Parser {
     fn decl_extern(&mut self) -> Result<Decl> {
         let token = self.advance();
         match token.get_type() {
-            TokenType::Function => self.decl_function(true),
-            TokenType::Procedure => self.decl_procedure(true),
+            TokenType::Function => self.decl_function(true, true),
             _ => Err(parser_expected(
                 "can only use extern for procedures and functions",
                 token,
@@ -83,7 +85,7 @@ impl Parser {
         }
     }
 
-    fn decl_procedure(&mut self, is_extern: bool) -> Result<Decl> {
+    fn decl_function(&mut self, is_extern: bool, is_io: bool) -> Result<Decl> {
         let name = self.advance();
         if !name.get_type().is_identifer() {
             return Err(parser_expected("expected an function identifier", name));
@@ -115,60 +117,20 @@ impl Parser {
 
         let mut body = Vec::new();
         if !is_extern {
-            self.consume(&TokenType::BraceLeft)?;
-            while *self.peek().get_type() != TokenType::BraceRight {
-                body.push(self.stmt()?);
-            }
-            self.consume(&TokenType::BraceRight)?;
-        }
-
-        Ok(Decl::Procedure {
-            name: Identifier::from(name),
-            return_type: RefCell::new(Rc::new(return_type)),
-            params,
-            body,
-            is_extern,
-        })
-    }
-
-    fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
-        let name = self.advance();
-        if !name.get_type().is_identifer() {
-            return Err(parser_expected("expected an function identifier", name));
-        }
-
-        self.consume(&TokenType::ParenLeft)?;
-        let mut params = Vec::new();
-        while *self.peek().get_type() != TokenType::ParenRight {
-            params.push(self.decl_type_def()?);
-            if *self.peek().get_type() != TokenType::ParenRight {
-                self.consume(&TokenType::Comma)?;
+            if self.peek().get_type() == &TokenType::BraceLeft {
+                self.consume(&TokenType::BraceLeft)?;
+                while *self.peek().get_type() != TokenType::BraceRight {
+                    body.push(self.stmt()?);
+                }
+                self.consume(&TokenType::BraceRight)?;
+            } else {
+                self.consume(&TokenType::Set)?;
+                let value = self.expr()?;
+                body.push(Stmt::new(value.source(), StmtType::Return { value }));
             }
         }
-        self.consume(&TokenType::ParenRight)?;
 
-        let return_type = if *self.peek().get_type() == TokenType::To {
-            self.consume(&TokenType::To)?;
-            let type_name = self.advance();
-            if !type_name.get_type().is_identifer() {
-                return Err(parser_expected(
-                    "expected a return type identifier",
-                    type_name,
-                ));
-            }
-            TypeDef::Lazy(type_name.identifier().to_string())
-        } else {
-            TypeDef::Lazy("void".to_string())
-        };
-
-        let mut body = Vec::new();
-        if !is_extern {
-            self.consume(&TokenType::Set)?;
-            let value = self.expr()?;
-            body.push(Stmt::new(value.source(), StmtType::Return { value }));
-        }
-
-        Ok(Decl::Procedure {
+        Ok(Decl::Function {
             name: Identifier::from(name),
             return_type: RefCell::new(Rc::new(return_type)),
             params,
@@ -209,8 +171,11 @@ impl Parser {
         while *self.peek().get_type() != TokenType::BraceRight {
             let next = self.advance();
             methods.push(match next.get_type() {
-                TokenType::Procedure => Ok(Rc::new(self.decl_procedure(false)?)),
-                TokenType::Function => Ok(Rc::new(self.decl_function(false)?)),
+                TokenType::Io => {
+                    self.consume(&TokenType::Io)?;
+                    Ok(Rc::new(self.decl_function(false, true)?))
+                }
+                TokenType::Function => Ok(Rc::new(self.decl_function(false, false)?)),
                 _ => Err(parser_expected("expected procedure or function", next)),
             }?);
         }
