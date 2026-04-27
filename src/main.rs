@@ -25,11 +25,11 @@ mod typing;
 
 fn main() -> error::Result<()> {
     let args = ArgsBuilder::new().parse().unwrap().build();
-    if args.get_input().is_empty() {
+    if args.input().is_empty() {
         println!("{}", HELP_MESSAGE)
     } else {
         // guaranteed to not be empty
-        for filename in args.get_input() {
+        for filename in args.input() {
             compile_file(filename, &args)?;
         }
     }
@@ -44,12 +44,12 @@ fn compile_file(filename: &Rc<PathBuf>, args: &cli::Args) -> error::Result<()> {
         let header = Header::new().headers(&ast);
         let (types, fields) = header.analysed();
         Resolution::new(&types, fields).resolve(&ast)?;
-        match args.get_target() {
+        match args.target() {
             cli::Target::Cpp => {
                 let compiler = Compiler::new(&ast);
-                let header_output = set_output(filename.as_ref(), args.get_output(), "hpp");
+                let header_output = set_output(filename.as_ref(), args.output(), "hpp");
                 compiler.compile(CppHeaderGenerator, &header_output)?;
-                let code_output = set_output(filename.as_ref(), args.get_output(), "cpp");
+                let code_output = set_output(filename.as_ref(), args.output(), "cpp");
                 compiler.compile(CppCodeGenerator::new(), &code_output)?;
             }
             cli::Target::Cranelift => todo!("hahaha i wish"),

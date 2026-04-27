@@ -7,10 +7,7 @@ use std::{
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
-    Error::new(vec![Diagnostic::new(
-        expected.to_string(),
-        next.get_source(),
-    )])
+    Error::new(vec![Diagnostic::new(expected.to_string(), next.source())])
 }
 
 pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {

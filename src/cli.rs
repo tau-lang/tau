@@ -42,15 +42,15 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn get_input(&self) -> &HashSet<Rc<PathBuf>> {
+    pub fn input(&self) -> &HashSet<Rc<PathBuf>> {
         &self.input
     }
 
-    pub fn get_output(&self) -> &Path {
+    pub fn output(&self) -> &Path {
         &self.output
     }
 
-    pub fn get_target(&self) -> &Target {
+    pub fn target(&self) -> &Target {
         &self.target
     }
 }

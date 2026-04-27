@@ -75,25 +75,25 @@ impl Token {
         Token { token_type, source }
     }
 
-    pub fn get_type(&self) -> &TokenType {
+    pub fn token_type(&self) -> &TokenType {
         &self.token_type
     }
 
     pub fn identifier(&self) -> &str {
-        match self.get_type() {
+        match self.token_type() {
             TokenType::Identifier(name) => name,
             TokenType::VSelf => "self",
             _ => panic!("expected identifier"),
         }
     }
-    pub fn get_source(&self) -> Source {
+    pub fn source(&self) -> Source {
         self.source.clone()
     }
 }
 
 impl From<Token> for Identifier {
     fn from(token: Token) -> Self {
-        match token.get_type() {
+        match token.token_type() {
             TokenType::Identifier(name) => Identifier::new(name.to_string(), token.source),
             TokenType::VSelf => Identifier::new("self".to_string(), token.source),
             _ => panic!("token '{:?}' is not a identifier", token),
@@ -103,7 +103,7 @@ impl From<Token> for Identifier {
 
 impl From<&Token> for Identifier {
     fn from(token: &Token) -> Self {
-        if let TokenType::Identifier(name) = token.get_type() {
+        if let TokenType::Identifier(name) = token.token_type() {
             Identifier::new(name.to_string(), token.source.clone())
         } else {
             panic!()

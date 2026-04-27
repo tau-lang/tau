@@ -106,8 +106,8 @@ impl<'a> DeclVisitor<'a> for Header {
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
-                filename.push(name.get_name());
-                module_name = name.get_name();
+                filename.push(name.name());
+                module_name = name.name();
             }
             filename.set_extension("tau");
             filename
@@ -131,14 +131,11 @@ impl<'a> DeclVisitor<'a> for Header {
         fields: &'a [(Identifier, TypeCell)],
         methods: &'a [Rc<Decl>],
     ) {
-        let struct_name = name.get_name().to_string();
+        let struct_name = name.name().to_string();
 
         let mut members = HashMap::new();
         for (field_name, field_type) in fields {
-            members.insert(
-                field_name.get_name().to_string(),
-                field_type.borrow().clone(),
-            );
+            members.insert(field_name.name().to_string(), field_type.borrow().clone());
         }
         for decl in methods {
             if let Decl::Function {
@@ -149,7 +146,7 @@ impl<'a> DeclVisitor<'a> for Header {
             } = decl.as_ref()
             {
                 members.insert(
-                    name.get_name().to_string(),
+                    name.name().to_string(),
                     self.make_function_type(return_type, params),
                 );
             }
@@ -174,13 +171,13 @@ impl<'a> DeclVisitor<'a> for Header {
         _: bool,
     ) {
         self.fields.insert(
-            name.get_name().to_string(),
+            name.name().to_string(),
             self.make_function_type(return_type, params),
         );
     }
 
     fn visit_const(&mut self, name: &'a Identifier, var_type: &'a TypeCell, _: &Expr) {
         self.fields
-            .insert(name.get_name().to_string(), var_type.borrow().clone());
+            .insert(name.name().to_string(), var_type.borrow().clone());
     }
 }

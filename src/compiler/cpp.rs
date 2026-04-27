@@ -77,7 +77,7 @@ impl From<&TypeCell> for CppSourceCode {
 
 impl From<&Identifier> for CppSourceCode {
     fn from(identifier: &Identifier) -> Self {
-        CppSourceCode(match identifier.get_name() {
+        CppSourceCode(match identifier.name() {
             "self" => "this".to_string(),
             name @ ("alignas" | "alignof" | "and" | "and_eq" | "asm" | "atomic_cancel"
             | "atomic_commit" | "atomic_noexcept" | "auto" | "bitand" | "bitor"
@@ -292,7 +292,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
     type Output = CppSourceCode;
 
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> CppSourceCode {
-        match operator.get_type() {
+        match operator.token_type() {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
             TokenType::Sub => format!("-{}", self.visit_expr(right)),
             TokenType::Not => format!("!{}", self.visit_expr(right)),
@@ -309,7 +309,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
     ) -> CppSourceCode {
         let mut render_op =
             |op: &str| format!("{} {op} {}", self.visit_expr(left), self.visit_expr(right));
-        match operator.get_type() {
+        match operator.token_type() {
             TokenType::Add => render_op("+"),
             TokenType::Sub => render_op("-"),
             TokenType::Mul => render_op("*"),
@@ -340,7 +340,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         lookup: &TypeCell,
     ) -> CppSourceCode {
         let left = self.visit_expr(left);
-        let right = right.get_name();
+        let right = right.name();
         match lookup.borrow().as_ref() {
             TypeDef::Struct {
                 name: _,
@@ -401,7 +401,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
     ) -> CppSourceCode {
         let struct_type = struct_type.borrow();
         let struct_type = if let TypeDef::Struct { name, members: _ } = struct_type.as_ref() {
-            name.get_name()
+            name.name()
         } else {
             unreachable!()
         };
@@ -445,7 +445,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
     }
 
     fn visit_literal(&mut self, value: &Token) -> CppSourceCode {
-        match value.get_type() {
+        match value.token_type() {
             TokenType::Bool(value) => value.to_string(),
             TokenType::Number(value) => value.to_string(),
             TokenType::String(content) => format!("\"{}\"", content),
@@ -569,7 +569,7 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         is_extern: bool,
         _: bool,
     ) -> Self::Output {
-        if name.get_name() == "main" {
+        if name.name() == "main" {
             self.main_type = Some(return_type.borrow().clone())
         }
         if is_extern {

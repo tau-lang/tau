@@ -156,7 +156,7 @@ impl Display for TypeDef {
                 types: _,
                 fields: _,
             } => formatter.write_str("<module>"),
-            Self::Struct { name, members: _ } => formatter.write_str(name.get_name()),
+            Self::Struct { name, members: _ } => formatter.write_str(name.name()),
             Self::Function {
                 parameters,
                 return_type,
