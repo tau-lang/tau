@@ -259,6 +259,22 @@ impl Parser {
         ))
     }
 
+    /// Parses a single let statement. A let statement is of the form:
+    ///
+    /// ```text
+    /// `let` identifier (`:` type)? `=` expr
+    /// ```
+    ///
+    /// Alternativly, currently only available for functions there exists the let/in syntax:
+    ///
+    /// ```text
+    /// `let`
+    ///   (stmt_let)+
+    /// `in`
+    ///   expr
+    /// ```
+    ///
+    /// Not every let statement has its own let token. The keyword may already be consumed by the parser at a previous step. Therefore it may be skipped by setting the skip let arg to true.
     fn stmt_let(&mut self, skip_let: bool) -> Result<Stmt> {
         let (start, name) = if skip_let {
             let next = self.advance();
