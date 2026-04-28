@@ -18,6 +18,7 @@ pub enum Decl {
         params: Vec<(Identifier, TypeCell)>,
         body: Vec<Stmt>,
         is_extern: bool,
+        is_io: bool,
     },
     Const {
         name: Identifier,
@@ -26,8 +27,10 @@ pub enum Decl {
     },
 }
 
-pub trait DeclVisitor<'a, T> {
-    fn visit_decl(&mut self, decl: &'a Decl) -> T {
+pub trait DeclVisitor<'a> {
+    type Output;
+
+    fn visit_decl(&mut self, decl: &'a Decl) -> Self::Output {
         match decl {
             Decl::Import(name) => self.visit_import(name),
             Decl::Struct {
@@ -41,7 +44,8 @@ pub trait DeclVisitor<'a, T> {
                 params,
                 body,
                 is_extern,
-            } => self.visit_function(name, return_type, params, body, *is_extern),
+                is_io,
+            } => self.visit_function(name, return_type, params, body, *is_extern, *is_io),
             Decl::Const {
                 name,
                 var_type,
@@ -50,14 +54,14 @@ pub trait DeclVisitor<'a, T> {
         }
     }
 
-    fn visit_import(&mut self, path: &'a [Identifier]) -> T;
+    fn visit_import(&mut self, path: &'a [Identifier]) -> Self::Output;
 
     fn visit_struct(
         &mut self,
         name: &'a Identifier,
         fields: &'a [(Identifier, TypeCell)],
         methods: &'a [Rc<Decl>],
-    ) -> T;
+    ) -> Self::Output;
 
     fn visit_function(
         &mut self,
@@ -66,12 +70,13 @@ pub trait DeclVisitor<'a, T> {
         params: &'a [(Identifier, TypeCell)],
         body: &'a [Stmt],
         is_extern: bool,
-    ) -> T;
+        is_io: bool,
+    ) -> Self::Output;
 
     fn visit_const(
         &mut self,
         name: &'a Identifier,
         var_type: &'a TypeCell,
         initializer: &'a Expr,
-    ) -> T;
+    ) -> Self::Output;
 }

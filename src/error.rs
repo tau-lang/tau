@@ -7,10 +7,7 @@ use std::{
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
-    Error::new(vec![Diagnostic::new(
-        expected.to_string(),
-        next.get_source(),
-    )])
+    Error::new(vec![Diagnostic::new(expected.to_string(), next.source())])
 }
 
 pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {
@@ -22,10 +19,8 @@ pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
-const YELLOW: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
 const BLUE: &str = "\x1b[34m";
-const GREEN: &str = "\x1b[93m";
 
 pub struct Error(Vec<Diagnostic>);
 

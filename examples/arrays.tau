@@ -1,14 +1,15 @@
 extern fn println(data: str)
 
-extern fn i32_to_str(input: i32): str
+extern fn i32_to_str(input: i32) -> str
 
-fn main(): void {
+fn plus1(i: i32) -> i32 = i + 1
+
+io fn main() {
     let a = i32[2 * 8] { 0, 0 }
     let i = 0
     while (i < 16) {
         a[i] = i
-        i += 1
+        i = plus1(i)
     }
     println(i32_to_str(a[15]))
-    return 0
 }

@@ -42,15 +42,15 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn get_input(&self) -> &HashSet<Rc<PathBuf>> {
+    pub fn input(&self) -> &HashSet<Rc<PathBuf>> {
         &self.input
     }
 
-    pub fn get_output(&self) -> &Path {
+    pub fn output(&self) -> &Path {
         &self.output
     }
 
-    pub fn get_target(&self) -> &Target {
+    pub fn target(&self) -> &Target {
         &self.target
     }
 }
@@ -71,12 +71,12 @@ impl ArgsBuilder {
         let args: Vec<String> = env::args().collect();
         let mut iter = args.into_iter();
         iter.next()
-            .expect("expect program exists ($0) as firt command line argument");
+            .expect("expect program exists ($0) as first command line argument");
         while let Some(arg) = iter.next() {
             if arg.starts_with('-') {
                 self.parse_option(arg.as_str(), &mut iter)?;
             } else {
-                self.parse_file(iter.next())?;
+                self.parse_file(arg)?;
             }
         }
         Ok(self)
@@ -116,8 +116,11 @@ impl ArgsBuilder {
         }
     }
 
-    fn parse_file(&mut self, next: Option<String>) -> Result<(), String> {
-        if let Some(input) = next {
+    fn parse_file<T>(&mut self, next: T) -> Result<(), String>
+    where
+        T: Into<Option<String>>,
+    {
+        if let Some(input) = next.into() {
             let path_buf = PathBuf::from(input);
             if path_buf.exists() {
                 self.args.input.insert(Rc::new(path_buf));

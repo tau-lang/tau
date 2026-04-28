@@ -24,7 +24,6 @@ impl Stmt {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum StmtType {
     Block {
         statements: Vec<Rc<Stmt>>,
@@ -51,8 +50,10 @@ pub enum StmtType {
     ExprStmt(Expr),
 }
 
-pub trait StmtVisitor<'a, T> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) -> T {
+pub trait StmtVisitor<'a> {
+    type Output;
+
+    fn visit_stmt(&mut self, stmt: &'a Stmt) -> Self::Output {
         match stmt.kind() {
             StmtType::Block { statements } => self.visit_block(statements),
             StmtType::Let {
@@ -73,20 +74,20 @@ pub trait StmtVisitor<'a, T> {
         }
     }
 
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> T;
+    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Self::Output;
 
     fn visit_let(
         &mut self,
         name: &'a Identifier,
         var_type: &'a TypeCell,
         initializer: &'a Expr,
-    ) -> T;
+    ) -> Self::Output;
 
-    fn visit_return(&mut self, value: &'a Expr) -> T;
+    fn visit_return(&mut self, value: &'a Expr) -> Self::Output;
 
-    fn visit_break(&mut self) -> T;
+    fn visit_break(&mut self) -> Self::Output;
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> T;
+    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output;
 
     fn visit_for(
         &mut self,
@@ -94,7 +95,7 @@ pub trait StmtVisitor<'a, T> {
         condition: &'a Expr,
         increment: &'a Expr,
         body: &'a Rc<Stmt>,
-    ) -> T;
+    ) -> Self::Output;
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> T;
+    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output;
 }

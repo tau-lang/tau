@@ -37,23 +37,21 @@ impl Parser {
 
     pub(crate) fn decl(&mut self) -> Result<Decl> {
         let token = self.advance();
-        if token.get_type() == &TokenType::Eof {
+        if token.token_type() == &TokenType::Eof {
             return Err(parser_expected(
                 "Found end of File but expected a token",
                 token,
             ));
         }
-        match token.get_type() {
+        match token.token_type() {
             TokenType::Const => self.decl_const(),
-            TokenType::Extern => self.decl_extern(),
-            TokenType::Function => self.decl_function(false),
+            TokenType::Extern => self.decl_modifier(true, false),
+            TokenType::Io => self.decl_modifier(false, true),
+            TokenType::Function => self.decl_function(false, false),
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
             t => Err(parser_expected(
-                format!(
-                    "Found {:?} expected import, function, struct or const",
-                    t.clone()
-                ),
+                format!("Found {:?} expected import, function, struct or const", &t),
                 token,
             )),
         }
@@ -70,34 +68,51 @@ impl Parser {
         })
     }
 
-    fn decl_extern(&mut self) -> Result<Decl> {
+    fn decl_modifier(&mut self, is_extern: bool, is_io: bool) -> Result<Decl> {
         let token = self.advance();
-        match token.get_type() {
-            TokenType::Function => self.decl_function(true),
-            _ => todo!("unimplemented decl: {:?}", token),
+        match token.token_type() {
+            TokenType::Extern => {
+                if is_extern {
+                    Err(parser_expected("function is already extern", token))
+                } else {
+                    self.decl_modifier(true, is_io)
+                }
+            }
+            TokenType::Io => {
+                if is_io {
+                    Err(parser_expected("function is already io", token))
+                } else {
+                    self.decl_modifier(is_extern, true)
+                }
+            }
+            TokenType::Function => self.decl_function(is_extern, is_io),
+            _ => Err(parser_expected(
+                "unexpected return type, expected modifier or function",
+                token,
+            )),
         }
     }
 
-    fn decl_function(&mut self, is_extern: bool) -> Result<Decl> {
+    fn decl_function(&mut self, is_extern: bool, is_io: bool) -> Result<Decl> {
         let name = self.advance();
-        if !name.get_type().is_identifer() {
+        if !name.token_type().is_identifer() {
             return Err(parser_expected("expected an function identifier", name));
         }
 
         self.consume(&TokenType::ParenLeft)?;
         let mut params = Vec::new();
-        while *self.peek().get_type() != TokenType::ParenRight {
+        while *self.peek().token_type() != TokenType::ParenRight {
             params.push(self.decl_type_def()?);
-            if *self.peek().get_type() != TokenType::ParenRight {
+            if *self.peek().token_type() != TokenType::ParenRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
         self.consume(&TokenType::ParenRight)?;
 
-        let return_type = if *self.peek().get_type() == TokenType::Colon {
-            self.consume(&TokenType::Colon)?;
+        let return_type = if *self.peek().token_type() == TokenType::To {
+            self.consume(&TokenType::To)?;
             let type_name = self.advance();
-            if !type_name.get_type().is_identifer() {
+            if !type_name.token_type().is_identifer() {
                 return Err(parser_expected(
                     "expected a return type identifier",
                     type_name,
@@ -108,14 +123,11 @@ impl Parser {
             TypeDef::Lazy("void".to_string())
         };
 
-        let mut body = Vec::new();
-        if !is_extern {
-            self.consume(&TokenType::BraceLeft)?;
-            while *self.peek().get_type() != TokenType::BraceRight {
-                body.push(self.stmt()?);
-            }
-            self.consume(&TokenType::BraceRight)?;
-        }
+        let body = if is_extern {
+            Vec::new()
+        } else {
+            self.decl_body()?
+        };
 
         Ok(Decl::Function {
             name: Identifier::from(name),
@@ -123,14 +135,38 @@ impl Parser {
             params,
             body,
             is_extern,
+            is_io,
         })
+    }
+
+    fn decl_body(&mut self) -> Result<Vec<Stmt>> {
+        let mut body = Vec::new();
+        if self.peek().token_type() == &TokenType::BraceLeft {
+            self.consume(&TokenType::BraceLeft)?;
+            while *self.peek().token_type() != TokenType::BraceRight {
+                body.push(self.stmt()?);
+            }
+            self.consume(&TokenType::BraceRight)?;
+        } else {
+            self.consume(&TokenType::Set)?;
+            if *self.peek().token_type() == TokenType::Let {
+                self.advance();
+                while *self.peek().token_type() != TokenType::In {
+                    body.push(self.stmt_let(true)?);
+                }
+                self.consume(&TokenType::In)?;
+            }
+            let value = self.expr()?;
+            body.push(Stmt::new(value.source(), StmtType::Return { value }));
+        }
+        Ok(body)
     }
 
     fn decl_import(&mut self) -> Result<Decl> {
         let mut path = Vec::new();
         loop {
             path.push(Identifier::from(self.advance()));
-            if *self.peek().get_type() == TokenType::Dot {
+            if *self.peek().token_type() == TokenType::Dot {
                 self.advance();
             } else {
                 break;
@@ -141,23 +177,22 @@ impl Parser {
 
     fn decl_struct(&mut self) -> Result<Decl> {
         let name = self.advance();
-        if !name.get_type().is_identifer() {
+        if !name.token_type().is_identifer() {
             return Err(parser_expected("expected a struct identifier", name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
         let mut fields = Vec::new();
-        while self.peek().get_type().is_identifer() {
+        while self.peek().token_type().is_identifer() {
             fields.push(self.decl_type_def()?);
-            if *self.peek().get_type() == TokenType::Comma {
+            if *self.peek().token_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma)?;
             }
         }
 
         let mut methods = Vec::new();
-        while *self.peek().get_type() != TokenType::BraceRight {
-            self.consume(&TokenType::Function)?;
-            methods.push(Rc::new(self.decl_function(false)?));
+        while *self.peek().token_type() != TokenType::BraceRight {
+            methods.push(Rc::new(self.decl_modifier(false, false)?));
         }
 
         self.consume(&TokenType::BraceRight)?;
@@ -170,12 +205,12 @@ impl Parser {
 
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
         let name = self.advance();
-        if !name.get_type().is_identifer() {
+        if !name.token_type().is_identifer() {
             return Err(parser_expected("expected a type identifier", name));
         }
         self.consume(&TokenType::Colon)?;
         let type_name = self.advance();
-        if !type_name.get_type().is_identifer() {
+        if !type_name.token_type().is_identifer() {
             return Err(parser_expected("expected a type definition", type_name));
         }
         Ok((
@@ -186,13 +221,13 @@ impl Parser {
 
     pub(crate) fn stmt(&mut self) -> Result<Stmt> {
         let peek = self.peek();
-        match peek.get_type() {
+        match peek.token_type() {
             TokenType::BraceLeft => self.stmt_block(),
-            TokenType::Let => self.stmt_let(),
+            TokenType::Let => self.stmt_let(false),
             TokenType::Return => {
                 let current = self.advance();
                 Ok(Stmt::new(
-                    current.get_source(),
+                    current.source(),
                     StmtType::Return {
                         value: self.expr()?,
                     },
@@ -200,8 +235,9 @@ impl Parser {
             }
             TokenType::Break => {
                 let current = self.advance();
-                Ok(Stmt::new(current.get_source(), StmtType::Break))
+                Ok(Stmt::new(current.source(), StmtType::Break))
             }
+            TokenType::For => self.stmt_for(),
             TokenType::While => self.stmt_while(),
             _ => {
                 let expr = self.expr()?;
@@ -213,26 +249,46 @@ impl Parser {
     fn stmt_block(&mut self) -> Result<Stmt> {
         let current = self.advance();
         let mut statements = Vec::new();
-        while *self.peek().get_type() != TokenType::BraceRight {
+        while *self.peek().token_type() != TokenType::BraceRight {
             statements.push(Rc::new(self.stmt()?));
         }
         let rhs = self.consume(&TokenType::BraceRight)?;
         Ok(Stmt::new(
-            Source::union(&current.get_source(), &rhs.get_source()),
+            Source::union(&current.source(), &rhs.source()),
             StmtType::Block { statements },
         ))
     }
 
-    fn stmt_let(&mut self) -> Result<Stmt> {
-        let current = self.advance();
-        let name = self.advance();
-        if !name.get_type().is_identifer() {
+    /// Parses a single let statement. A let statement is of the form:
+    ///
+    /// ```text
+    /// `let` identifier (`:` type)? `=` expr
+    /// ```
+    ///
+    /// Alternativly, currently only available for functions there exists the let/in syntax:
+    ///
+    /// ```text
+    /// `let`
+    ///   (stmt_let)+
+    /// `in`
+    ///   expr
+    /// ```
+    ///
+    /// Not every let statement has its own let token. The keyword may already be consumed by the parser at a previous step. Therefore it may be skipped by setting the skip let arg to true.
+    fn stmt_let(&mut self, skip_let: bool) -> Result<Stmt> {
+        let (start, name) = if skip_let {
+            let next = self.advance();
+            (next.clone(), next)
+        } else {
+            (self.advance(), self.advance())
+        };
+        if !name.token_type().is_identifer() {
             return Err(parser_expected("expected a variable identifier", name));
         }
-        let var_type = if *self.peek().get_type() != TokenType::Set {
+        let var_type = if *self.peek().token_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
             let type_name = self.advance();
-            if !type_name.get_type().is_identifer() {
+            if !type_name.token_type().is_identifer() {
                 return Err(parser_expected(
                     "expected a type identifier for the variable",
                     type_name,
@@ -245,11 +301,32 @@ impl Parser {
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         Ok(Stmt::new(
-            Source::union(&current.get_source(), &initializer.source()),
+            Source::union(&start.source(), &initializer.source()),
             StmtType::Let {
                 name: Identifier::from(name),
                 var_type: RefCell::new(Rc::new(var_type)),
                 initializer,
+            },
+        ))
+    }
+
+    fn stmt_for(&mut self) -> Result<Stmt> {
+        let current = self.advance();
+        self.consume(&TokenType::ParenLeft)?;
+        let initializer = Rc::new(self.stmt()?);
+        self.consume(&TokenType::Colon)?;
+        let condition = self.expr()?;
+        self.consume(&TokenType::Colon)?;
+        let increment = self.expr()?;
+        self.consume(&TokenType::ParenRight)?;
+        let body = Rc::new(self.stmt()?);
+        Ok(Stmt::new(
+            Source::union(&current.source(), &body.source()),
+            StmtType::For {
+                initializer,
+                condition,
+                increment,
+                body,
             },
         ))
     }
@@ -261,7 +338,7 @@ impl Parser {
         self.consume(&TokenType::ParenRight)?;
         let body = Rc::new(self.stmt()?);
         Ok(Stmt::new(
-            Source::union(&current.get_source(), &body.source()),
+            Source::union(&current.source(), &body.source()),
             StmtType::While { condition, body },
         ))
     }
@@ -274,14 +351,14 @@ impl Parser {
         let next = self.advance();
         let mut lhs = self.expr_lhs(next)?;
         while self.has_next() {
-            let op = self.peek().get_type();
+            let op = self.peek().token_type();
             if let Some(l_bp) = Parser::postfix_binding_power(op) {
                 // If current binding power is below minimum, we return the left hand side expression
                 if l_bp < min_bp {
                     break;
                 }
                 let next = self.advance();
-                match next.get_type() {
+                match next.token_type() {
                     TokenType::BracketLeft => {
                         lhs = self.expr_index(lhs)?;
                     }
@@ -309,7 +386,7 @@ impl Parser {
      * Parses the left hand side of a expression.
      */
     fn expr_lhs(&mut self, next: Token) -> Result<Expr> {
-        match next.get_type() {
+        match next.token_type() {
             TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => {
                 self.expr_literal(next)
             }
@@ -329,10 +406,10 @@ impl Parser {
     }
 
     fn expr_unary(&mut self, op: Token) -> Result<Expr> {
-        let r_bp = Parser::prefix_binding_power(op.get_type());
+        let r_bp = Parser::prefix_binding_power(op.token_type());
         let rhs = self.expr_bp(r_bp)?;
         Ok(Expr::new(
-            Source::union(&op.get_source(), &rhs.source()),
+            Source::union(&op.source(), &rhs.source()),
             ExprKind::Unary {
                 operator: op,
                 right: Rc::new(rhs),
@@ -342,13 +419,13 @@ impl Parser {
 
     fn expr_binary(&mut self, lhs: Expr, bp: u8) -> Result<Expr> {
         let next = self.advance();
-        if *next.get_type() == TokenType::Dot {
+        if *next.token_type() == TokenType::Dot {
             let rhs = self.advance();
-            if !rhs.get_type().is_identifer() {
+            if !rhs.token_type().is_identifer() {
                 return Err(parser_expected("expected an identidier on the RHS", rhs));
             }
             Ok(Expr::new(
-                Source::union(&lhs.source(), &rhs.get_source()),
+                Source::union(&lhs.source(), &rhs.source()),
                 ExprKind::Get {
                     left: Rc::new(lhs),
                     right: Identifier::from(rhs),
@@ -370,15 +447,15 @@ impl Parser {
 
     fn expr_call(&mut self, lhs: Expr) -> Result<Expr> {
         let mut arguments = Vec::new();
-        while *self.peek().get_type() != TokenType::ParenRight {
+        while *self.peek().token_type() != TokenType::ParenRight {
             arguments.push(Rc::new(self.expr()?));
-            if *self.peek().get_type() == TokenType::Comma {
+            if *self.peek().token_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma)?;
             }
         }
         let rhs = self.consume(&TokenType::ParenRight)?;
         Ok(Expr::new(
-            Source::union(&lhs.source(), &rhs.get_source()),
+            Source::union(&lhs.source(), &rhs.source()),
             ExprKind::Call {
                 callee: Rc::new(lhs),
                 arguments,
@@ -388,7 +465,7 @@ impl Parser {
 
     fn expr_create_or_index(&mut self, next: Token) -> Result<Expr> {
         self.advance();
-        if *self.peek().get_type() == TokenType::BracketRight {
+        if *self.peek().token_type() == TokenType::BracketRight {
             // No index was given, only a array creation is possible
             self.advance();
             self.expr_create_array(next, None)
@@ -396,12 +473,12 @@ impl Parser {
             // A index was given, can be a sized array or
             let expr = Rc::new(self.expr()?);
             let current = self.consume(&TokenType::BracketRight)?;
-            if *self.peek().get_type() == TokenType::BraceLeft {
+            if *self.peek().token_type() == TokenType::BraceLeft {
                 self.expr_create_array(next, Some(expr))
             } else {
                 let kind = ExprKind::Index {
                     object: Rc::new(Expr::new(
-                        current.get_source(),
+                        current.source(),
                         ExprKind::Variable {
                             name: Identifier::from(next),
                             variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
@@ -410,7 +487,7 @@ impl Parser {
                     index: expr,
                     lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
                 };
-                Ok(Expr::new(current.get_source(), kind))
+                Ok(Expr::new(current.source(), kind))
             }
         }
     }
@@ -422,16 +499,16 @@ impl Parser {
     ) -> Result<Expr> {
         self.consume(&TokenType::BraceLeft)?;
         let mut fields = Vec::new();
-        while *self.peek().get_type() != TokenType::BraceRight {
+        while *self.peek().token_type() != TokenType::BraceRight {
             fields.push(Rc::new(self.expr()?));
-            if *self.peek().get_type() != TokenType::BraceRight {
+            if *self.peek().token_type() != TokenType::BraceRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
         let current = self.consume(&TokenType::BraceRight)?;
 
         Ok(Expr::new(
-            Source::union(&array_type.get_source(), &current.get_source()),
+            Source::union(&array_type.source(), &current.source()),
             ExprKind::CreateArray {
                 array_type: RefCell::new(Rc::new(TypeDef::Lazy(
                     array_type.identifier().to_string(),
@@ -458,9 +535,9 @@ impl Parser {
     fn expr_create_struct(&mut self, struct_name: Token) -> Result<Expr> {
         let current = self.consume(&TokenType::BraceLeft)?;
         let mut fields = Vec::new();
-        while *self.peek().get_type() != TokenType::BraceRight {
+        while *self.peek().token_type() != TokenType::BraceRight {
             let name = self.advance();
-            if !name.get_type().is_identifer() {
+            if !name.token_type().is_identifer() {
                 return Err(parser_expected(
                     "expected field name identifier for the struct",
                     name,
@@ -470,13 +547,13 @@ impl Parser {
             let expr = Rc::new(self.expr()?);
             let field = (Identifier::from(name), expr);
             fields.push(field);
-            if *self.peek().get_type() != TokenType::BraceRight {
+            if *self.peek().token_type() != TokenType::BraceRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
         self.consume(&TokenType::BraceRight)?;
         Ok(Expr::new(
-            Source::union(&struct_name.get_source(), &current.get_source()),
+            Source::union(&struct_name.source(), &current.source()),
             ExprKind::CreateStruct {
                 struct_type: RefCell::new(Rc::new(TypeDef::Lazy(
                     struct_name.identifier().to_string(),
@@ -495,11 +572,11 @@ impl Parser {
     }
 
     fn expr_identifier(&mut self, next: Token) -> Result<Expr> {
-        match *self.peek().get_type() {
+        match *self.peek().token_type() {
             TokenType::BraceLeft => self.expr_create_struct(next),
             TokenType::BracketLeft => self.expr_create_or_index(next),
             _ => Ok(Expr::new(
-                next.get_source(),
+                next.source(),
                 ExprKind::Variable {
                     name: Identifier::from(next),
                     variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
@@ -513,13 +590,13 @@ impl Parser {
         let condition = Rc::new(self.expr()?);
         self.consume(&TokenType::ParenRight)?;
         let if_branch = Rc::new(self.stmt()?);
-        let (else_branch, source) = if *self.peek().get_type() == TokenType::Else {
+        let (else_branch, source) = if *self.peek().token_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
             let else_branch = self.stmt()?;
-            let source = Source::union(&current.get_source(), &else_branch.source());
+            let source = Source::union(&current.source(), &else_branch.source());
             (Some(Rc::new(else_branch)), source)
         } else {
-            let source = Source::union(&current.get_source(), &if_branch.source());
+            let source = Source::union(&current.source(), &if_branch.source());
             (None, source)
         };
         Ok(Expr::new(
@@ -534,12 +611,12 @@ impl Parser {
     }
 
     fn expr_literal(&mut self, next: Token) -> Result<Expr> {
-        Ok(Expr::new(next.get_source(), ExprKind::Literal(next)))
+        Ok(Expr::new(next.source(), ExprKind::Literal(next)))
     }
 
     fn expr_self(&mut self, next: Token) -> Result<Expr> {
         Ok(Expr::new(
-            next.get_source(),
+            next.source(),
             ExprKind::Variable {
                 name: Identifier::from(next),
                 variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
@@ -587,13 +664,13 @@ impl Parser {
 
     fn consume(&mut self, expected: &TokenType) -> Result<Token> {
         let next = self.advance();
-        if next.get_type() != expected {
+        if next.token_type() != expected {
             // The consumed token was not of the expected type
             return Err(crate::error::parser_expected(
                 format!(
                     "expected {:?} but found {:?}",
                     expected.clone(),
-                    next.get_type().clone()
+                    next.token_type().clone()
                 ),
                 next,
             ));
