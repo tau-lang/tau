@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        declaration::Decl,
+        declaration::{Decl, Function, Modifiers, Structure},
         expression::{Expr, ExprKind},
         identifier::Identifier,
         statement::{Stmt, StmtType},
@@ -13,7 +13,6 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-#[derive(Debug)]
 pub struct Parser {
     tokens: VecDeque<Token>,
     declarations: Vec<Decl>,
@@ -45,13 +44,22 @@ impl Parser {
         }
         match token.token_type() {
             TokenType::Const => self.decl_const(),
-            TokenType::Extern => self.decl_modifier(true, false),
-            TokenType::Io => self.decl_modifier(false, true),
-            TokenType::Function => self.decl_function(false, false),
+            TokenType::Extern => self.decl_modifier(Modifiers {
+                is_extern: true,
+                ..Modifiers::default()
+            }),
+            TokenType::Io => self.decl_modifier(Modifiers {
+                is_io: true,
+                ..Modifiers::default()
+            }),
+            TokenType::Function => self.decl_function(Modifiers::default()),
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
-            t => Err(parser_expected(
-                format!("Found {:?} expected import, function, struct or const", &t),
+            token_type => Err(parser_expected(
+                format!(
+                    "Found {:?} expected import, function, struct or const",
+                    &token_type
+                ),
                 token,
             )),
         }
@@ -68,24 +76,30 @@ impl Parser {
         })
     }
 
-    fn decl_modifier(&mut self, is_extern: bool, is_io: bool) -> Result<Decl> {
+    fn decl_modifier(&mut self, modifiers: Modifiers) -> Result<Decl> {
         let token = self.advance();
         match token.token_type() {
             TokenType::Extern => {
-                if is_extern {
+                if modifiers.is_extern {
                     Err(parser_expected("function is already extern", token))
                 } else {
-                    self.decl_modifier(true, is_io)
+                    self.decl_modifier(Modifiers {
+                        is_extern: true,
+                        ..modifiers
+                    })
                 }
             }
             TokenType::Io => {
-                if is_io {
+                if modifiers.is_io {
                     Err(parser_expected("function is already io", token))
                 } else {
-                    self.decl_modifier(is_extern, true)
+                    self.decl_modifier(Modifiers {
+                        is_extern: true,
+                        ..modifiers
+                    })
                 }
             }
-            TokenType::Function => self.decl_function(is_extern, is_io),
+            TokenType::Function => self.decl_function(modifiers),
             _ => Err(parser_expected(
                 "unexpected return type, expected modifier or function",
                 token,
@@ -93,7 +107,7 @@ impl Parser {
         }
     }
 
-    fn decl_function(&mut self, is_extern: bool, is_io: bool) -> Result<Decl> {
+    fn decl_function(&mut self, modifiers: Modifiers) -> Result<Decl> {
         let name = self.advance();
         if !name.token_type().is_identifer() {
             return Err(parser_expected("expected an function identifier", name));
@@ -123,20 +137,19 @@ impl Parser {
             TypeDef::Lazy("void".to_string())
         };
 
-        let body = if is_extern {
+        let body = if modifiers.is_extern {
             Vec::new()
         } else {
             self.decl_body()?
         };
 
-        Ok(Decl::Function {
+        Ok(Decl::Function(Function {
             name: Identifier::from(name),
             return_type: RefCell::new(Rc::new(return_type)),
             params,
             body,
-            is_extern,
-            is_io,
-        })
+            modifiers,
+        }))
     }
 
     fn decl_body(&mut self) -> Result<Vec<Stmt>> {
@@ -192,15 +205,15 @@ impl Parser {
 
         let mut methods = Vec::new();
         while *self.peek().token_type() != TokenType::BraceRight {
-            methods.push(Rc::new(self.decl_modifier(false, false)?));
+            methods.push(Rc::new(self.decl_modifier(Modifiers::default())?));
         }
 
         self.consume(&TokenType::BraceRight)?;
-        Ok(Decl::Struct {
+        Ok(Decl::Struct(Structure {
             name: Identifier::from(name),
             fields,
             methods,
-        })
+        }))
     }
 
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
@@ -265,7 +278,8 @@ impl Parser {
     /// `let` identifier (`:` type)? `=` expr
     /// ```
     ///
-    /// Alternativly, currently only available for functions there exists the let/in syntax:
+    /// Alternativly, currently only available for functions there exists the
+    /// let/in syntax:
     ///
     /// ```text
     /// `let`
@@ -274,7 +288,9 @@ impl Parser {
     ///   expr
     /// ```
     ///
-    /// Not every let statement has its own let token. The keyword may already be consumed by the parser at a previous step. Therefore it may be skipped by setting the skip let arg to true.
+    /// Not every let statement has its own let token. The keyword may already
+    /// be consumed by the parser at a previous step. Therefore it may be
+    /// skipped by setting the skip let arg to true.
     fn stmt_let(&mut self, skip_let: bool) -> Result<Stmt> {
         let (start, name) = if skip_let {
             let next = self.advance();
@@ -353,7 +369,8 @@ impl Parser {
         while self.has_next() {
             let op = self.peek().token_type();
             if let Some(l_bp) = Parser::postfix_binding_power(op) {
-                // If current binding power is below minimum, we return the left hand side expression
+                // If current binding power is below minimum, we return the left hand side
+                // expression
                 if l_bp < min_bp {
                     break;
                 }
@@ -368,7 +385,8 @@ impl Parser {
                     unexpected => unreachable!("Unexpected operator: {:?}", unexpected),
                 }
             } else if let Some((l_bp, r_bp)) = Parser::infix_binding_power(op) {
-                // If current binding power is below minimum, we return the left hand side expression
+                // If current binding power is below minimum, we return the left hand side
+                // expression
                 if l_bp < min_bp {
                     break;
                 }

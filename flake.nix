@@ -38,7 +38,9 @@
         bi = with pkgs; [
           openssl
           pkg-config
-          rust-bin.stable.latest.default
+          # rust-bin.stable.latest.default
+          # nightly is required for formatting comments
+          rust-bin.nightly.latest.default
           rust-analyzer
         ];
         devDependencies = with pkgs; [

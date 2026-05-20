@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor},
+        declaration::{Decl, DeclVisitor, Function, Structure},
         expression::{Expr, ExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
@@ -116,22 +116,20 @@ where
 pub struct CppHeaderGenerator;
 
 impl CppHeaderGenerator {
-    fn visit_method(
-        &mut self,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-    ) -> CppSourceCode {
-        let return_type = CppSourceCode::from(return_type.borrow().as_ref());
-        let name = CppSourceCode::from(name);
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+    fn visit_method(&mut self, function: &Function) -> CppSourceCode {
+        let return_type = CppSourceCode::from(function.return_type.borrow().as_ref());
+        let name = CppSourceCode::from(&function.name);
+        let params = visit_vec(
+            &function.params,
+            |x| format!("{}", CppSourceCode::from(x)),
+            ", ",
+        );
         CppSourceCode(format!("{return_type} {name}({params});"))
     }
 }
 
 impl<'a> Generator<'a> for CppHeaderGenerator {
     fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
-        // TODO:
         let mut file = File::create(output).expect("error reading file");
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
@@ -165,27 +163,18 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         CppSourceCode(format!("#include <{path}.hpp>"))
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &Identifier,
-        fields: &[(Identifier, TypeCell)],
-        methods: &[Rc<Decl>],
-    ) -> CppSourceCode {
-        let name = CppSourceCode::from(name);
-        let fields = visit_vec(fields, |x| format!("  {};", CppSourceCode::from(x)), "\n");
+    fn visit_struct(&mut self, structure: &Structure) -> CppSourceCode {
+        let name = CppSourceCode::from(&structure.name);
+        let fields = visit_vec(
+            &structure.fields,
+            |x| format!("  {};", CppSourceCode::from(x)),
+            "\n",
+        );
         let methods = visit_vec(
-            methods,
+            &structure.methods,
             |decl| {
-                if let Decl::Function {
-                    name,
-                    return_type,
-                    params,
-                    body: _,
-                    is_extern: _,
-                    is_io: _,
-                } = decl.as_ref()
-                {
-                    format!("  {}", self.visit_method(name, return_type, params))
+                if let Decl::Function(function) = decl.as_ref() {
+                    format!("  {}", self.visit_method(function))
                 } else {
                     panic!()
                 }
@@ -195,19 +184,19 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         format!("class {name} {{\npublic:\n{fields}\n{methods}\n}};").into()
     }
 
-    fn visit_function(
-        &mut self,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-        _: &[Stmt],
-        is_extern: bool,
-        _: bool,
-    ) -> CppSourceCode {
-        let name = CppSourceCode::from(name);
-        let is_extern = if is_extern { "\"C\" " } else { "" };
-        let return_type = CppSourceCode::from(return_type.borrow().as_ref());
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+    fn visit_function(&mut self, function: &Function) -> CppSourceCode {
+        let name = CppSourceCode::from(&function.name);
+        let is_extern = if function.modifiers.is_extern {
+            "\"C\" "
+        } else {
+            ""
+        };
+        let return_type = CppSourceCode::from(function.return_type.borrow().as_ref());
+        let params = visit_vec(
+            &function.params,
+            |x| format!("{}", CppSourceCode::from(x)),
+            ", ",
+        );
         CppSourceCode(format!("extern {is_extern}{return_type} {name}({params});"))
     }
 
@@ -242,20 +231,20 @@ impl<'a> CppCodeGenerator {
         format!("int main() {{\n{body}}}\n").into()
     }
 
-    fn visit_method(
-        &mut self,
-        struct_name: &Identifier,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-        body: &'a [Stmt],
-        _: bool,
-    ) -> CppSourceCode {
+    fn visit_method(&mut self, struct_name: &Identifier, function: &Function) -> CppSourceCode {
         let struct_name = CppSourceCode::from(struct_name);
-        let name = CppSourceCode::from(name);
-        let return_type = CppSourceCode::from(return_type);
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
-        let body = visit_vec(body, |stmt| format!("{}", self.visit_stmt(stmt)), "\n");
+        let name = CppSourceCode::from(&function.name);
+        let return_type = CppSourceCode::from(&function.return_type);
+        let params = visit_vec(
+            &function.params,
+            |x| format!("{}", CppSourceCode::from(x)),
+            ", ",
+        );
+        let body = visit_vec(
+            &function.body,
+            |stmt| format!("{}", self.visit_stmt(stmt)),
+            "\n",
+        );
         format!("{return_type} {struct_name}::{name}({params}) {{\n{body}\n}}").into()
     }
 }
@@ -525,33 +514,13 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         CppSourceCode::default()
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &Identifier,
-        _: &[(Identifier, TypeCell)],
-        methods: &'a [Rc<Decl>],
-    ) -> CppSourceCode {
-        let struct_type = name;
+    fn visit_struct(&mut self, structure: &Structure) -> CppSourceCode {
+        let struct_type = &structure.name;
         visit_vec(
-            methods,
+            &structure.methods,
             |method| {
-                if let Decl::Function {
-                    name,
-                    return_type,
-                    params,
-                    body,
-                    is_extern,
-                    is_io: _,
-                } = method.as_ref()
-                {
-                    format!("{}", self.visit_method(
-                    struct_type,
-                    name,
-                    return_type,
-                    params,
-                    body,
-                    *is_extern,
-                ))
+                if let Decl::Function(function) = method.as_ref() {
+                    format!("{}", self.visit_method(struct_type, function))
                 } else {
                     panic!("expected method")
                 }
@@ -560,25 +529,21 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         )
     }
 
-    fn visit_function(
-        &mut self,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-        body: &'_ [Stmt],
-        is_extern: bool,
-        _: bool,
-    ) -> Self::Output {
-        if name.name() == "main" {
-            self.main_type = Some(return_type.borrow().clone())
+    fn visit_function(&mut self, function: &Function) -> Self::Output {
+        if function.name.name() == "main" {
+            self.main_type = Some(function.return_type.borrow().clone())
         }
-        if is_extern {
+        if function.modifiers.is_extern {
             return CppSourceCode::default();
         }
-        let name = CppSourceCode::from(name);
-        let return_type = CppSourceCode::from(return_type);
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
-        let body = visit_vec(body, |x| format!("{}", self.visit_stmt(x)), "\n");
+        let name = CppSourceCode::from(&function.name);
+        let return_type = CppSourceCode::from(&function.return_type);
+        let params = visit_vec(
+            &function.params,
+            |x| format!("{}", CppSourceCode::from(x)),
+            ", ",
+        );
+        let body = visit_vec(&function.body, |x| format!("{}", self.visit_stmt(x)), "\n");
         format!("{return_type} {name} ({params}) {{\n{body}\n}}").into()
     }
 

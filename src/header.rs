@@ -2,15 +2,42 @@ use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor},
+        declaration::{Decl, DeclVisitor, Function, Structure},
         expression::Expr,
         identifier::Identifier,
-        statement::Stmt,
     },
     lexer::Lexer,
     parser::Parser,
     typing::{TypeCell, TypeDef, TypeNames},
 };
+
+/// This macro takes the name of a number type and returns a tuple `(String,
+/// Rc<TypeDef>)`, where the first entry is the name of the type and the
+/// second the full type definition. The type definition itself contains if
+/// the type is signed, if it is a float and the size of a number of the
+/// type.
+#[macro_export]
+macro_rules! number {
+    ( $name:expr ) => {{
+        let (float, signed) = match $name.chars().nth(0).expect("first char exists") {
+            'u' => (false, false),
+            'i' => (false, true),
+            'f' => (true, true),
+            _ => panic!("number should start with u,i or f"),
+        };
+        let size = match &$name[1..] {
+            "8" => 8,
+            "16" => 16,
+            "32" => 32,
+            "64" => 64,
+            _ => panic!("number should have size 8, 16, 32 or 64"),
+        };
+        (
+            $name.to_string(),
+            Rc::new(TypeDef::make_number($name, size, float, signed)),
+        )
+    }};
+}
 
 pub struct Header {
     types: TypeNames,
@@ -21,46 +48,16 @@ impl Header {
     pub fn new() -> Header {
         Header {
             types: HashMap::from([
-                (
-                    "u8".to_string(),
-                    Rc::new(TypeDef::make_number("u8", 1, false, false)),
-                ),
-                (
-                    "u16".to_string(),
-                    Rc::new(TypeDef::make_number("u16", 2, false, false)),
-                ),
-                (
-                    "u32".to_string(),
-                    Rc::new(TypeDef::make_number("u32", 4, false, false)),
-                ),
-                (
-                    "u64".to_string(),
-                    Rc::new(TypeDef::make_number("u64", 8, false, false)),
-                ),
-                (
-                    "i8".to_string(),
-                    Rc::new(TypeDef::make_number("i8", 1, false, true)),
-                ),
-                (
-                    "i16".to_string(),
-                    Rc::new(TypeDef::make_number("i16", 2, false, true)),
-                ),
-                (
-                    "i32".to_string(),
-                    Rc::new(TypeDef::make_number("i32", 4, false, true)),
-                ),
-                (
-                    "i64".to_string(),
-                    Rc::new(TypeDef::make_number("i64", 8, false, true)),
-                ),
-                (
-                    "f32".to_string(),
-                    Rc::new(TypeDef::make_number("f32", 4, true, true)),
-                ),
-                (
-                    "f64".to_string(),
-                    Rc::new(TypeDef::make_number("f64", 8, true, true)),
-                ),
+                number!("u8"),
+                number!("u16"),
+                number!("u32"),
+                number!("u64"),
+                number!("i8"),
+                number!("i16"),
+                number!("i32"),
+                number!("i64"),
+                number!("f32"),
+                number!("f64"),
                 ("bool".to_string(), Rc::new(TypeDef::Native("bool"))),
                 ("char".to_string(), Rc::new(TypeDef::Native("char"))),
                 ("str".to_string(), Rc::new(TypeDef::Native("str"))),
@@ -125,29 +122,18 @@ impl<'a> DeclVisitor<'a> for Header {
         );
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &'a Identifier,
-        fields: &'a [(Identifier, TypeCell)],
-        methods: &'a [Rc<Decl>],
-    ) {
-        let struct_name = name.name().to_string();
+    fn visit_struct(&mut self, structure: &'a Structure) {
+        let struct_name = structure.name.name().to_string();
 
         let mut members = HashMap::new();
-        for (field_name, field_type) in fields {
+        for (field_name, field_type) in &structure.fields {
             members.insert(field_name.name().to_string(), field_type.borrow().clone());
         }
-        for decl in methods {
-            if let Decl::Function {
-                name,
-                return_type,
-                params,
-                ..
-            } = decl.as_ref()
-            {
+        for decl in &structure.methods {
+            if let Decl::Function(func) = decl.as_ref() {
                 members.insert(
-                    name.name().to_string(),
-                    self.make_function_type(return_type, params),
+                    structure.name.name().to_string(),
+                    self.make_function_type(&func.return_type, &func.params),
                 );
             }
         }
@@ -155,24 +141,16 @@ impl<'a> DeclVisitor<'a> for Header {
         self.types.insert(
             struct_name,
             Rc::new(TypeDef::Struct {
-                name: name.clone(),
+                name: structure.name.clone(),
                 members,
             }),
         );
     }
 
-    fn visit_function(
-        &mut self,
-        name: &'a Identifier,
-        return_type: &'a TypeCell,
-        params: &'a [(Identifier, TypeCell)],
-        _: &[Stmt],
-        _: bool,
-        _: bool,
-    ) {
+    fn visit_function(&mut self, func: &'a Function) {
         self.fields.insert(
-            name.name().to_string(),
-            self.make_function_type(return_type, params),
+            func.name.name().to_string(),
+            self.make_function_type(&func.return_type, &func.params),
         );
     }
 

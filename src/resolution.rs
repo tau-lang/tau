@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor},
+        declaration::{Decl, DeclVisitor, Function, Structure},
         expression::{Expr, ExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
@@ -83,7 +83,8 @@ impl<'a> Resolution<'a> {
         self.ref_type(ref_type.clone())
     }
 
-    /// Get the underlying type of the type. If the type is only known by its name, it will try to find its definition.
+    /// Get the underlying type of the type. If the type is only known by its
+    /// name, it will try to find its definition.
     fn ref_type(&self, ref_type: Rc<TypeDef>) -> Result<Rc<TypeDef>> {
         if let TypeDef::Lazy(lazy_name) = ref_type.as_ref() {
             self.find_type(lazy_name)
@@ -96,7 +97,7 @@ impl<'a> Resolution<'a> {
         if let TypeDef::Struct { name: _, members } = lookup.as_ref() {
             let ref_type: Rc<TypeDef> = members
                 .get(member_name.name())
-                .expect("expected struct contains field")
+                .expect(&format!("expected struct contains field {member_name}"))
                 .clone();
             self.ref_type(ref_type)
         } else if let TypeDef::Module { types: _, fields } = lookup.as_ref() {
@@ -514,7 +515,8 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
                 condition.source(),
             )]))?
         }
-        // We don't check the return type of the increment expression, because we allow any type
+        // We don't check the return type of the increment expression, because we allow
+        // any type
         self.visit_expr(increment)?;
         self.visit_stmt(body)?;
         self.end_scope();
@@ -533,66 +535,55 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         Ok(())
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &'a Identifier,
-        members: &'a [(Identifier, TypeCell)],
-        methods: &'a [Rc<Decl>],
-    ) -> Self::Output {
+    fn visit_struct(&mut self, structure: &'a Structure) -> Self::Output {
         self.begin_scope();
         let struct_type = self
             .types
-            .get(name.name())
+            .get(structure.name.name())
             .expect("expected to find own struct name when trying to reference self")
             .clone();
         (*self.scopes.last_mut().expect("expected scope"))
             .borrow_mut()
             .insert("self".to_string(), struct_type);
-        for (_, member_type) in members {
+        for (_, member_type) in &structure.fields {
             let ref_type = self.ref_type(member_type.borrow().clone())?;
             *member_type.borrow_mut() = ref_type;
         }
-        for method in methods {
-            self.visit_decl(method)?;
+        for method in &structure.methods {
+            self.visit_decl(&method)?;
         }
         self.end_scope();
         Ok(())
     }
 
-    fn visit_function(
-        &mut self,
-        identifier: &'a Identifier,
-        return_type: &'a TypeCell,
-        params: &'a [(Identifier, TypeCell)],
-        body: &'a [Stmt],
-        is_extern: bool,
-        _: bool,
-    ) -> Self::Output {
+    fn visit_function(&mut self, function: &'a Function) -> Self::Output {
         if self.return_type.is_some() {
             Err(Error::new(vec![Diagnostic::new(
                 "return type already exists before body was defined".to_string(),
-                identifier.source(),
+                function.name.source(),
             )]))?;
         }
-        let ref_type = self.ref_type(return_type.borrow().clone())?;
-        *return_type.borrow_mut() = ref_type.clone();
+        let ref_type = self.ref_type(function.return_type.borrow().clone())?;
+        *function.return_type.borrow_mut() = ref_type.clone();
 
         // When a new body begins, first define all parameters as local variables.
         self.begin_scope();
-        for (param_name, param_type) in params {
+        for (param_name, param_type) in &function.params {
             let ref_type = self.ref_type(param_type.borrow().clone())?;
-            self.declare_variable(param_name, ref_type.clone())?;
+            self.declare_variable(&param_name, ref_type.clone())?;
             *param_type.borrow_mut() = ref_type;
         }
-        if is_extern {
-            // This function is defined outside of tau, there is no body that we can typecheck.
+        if function.modifiers.is_extern {
+            // This function is defined outside of tau, there is no body that we can
+            // typecheck.
             self.end_scope();
             return Ok(());
         }
 
-        // Check body. If an error occures, collect errors instead of throwing them directly.
+        // Check body. If an error occures, collect errors instead of throwing them
+        // directly.
         let mut errors = Option::None;
-        for stmt in body {
+        for stmt in &function.body {
             if let Err(err) = self.visit_stmt(stmt) {
                 errors = err.after(errors);
             }
@@ -610,7 +601,7 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         if !real.is_castable_to(ref_type.as_ref()) {
             Err(Error::new(vec![Diagnostic::new(
                 format!("could not cast {}", real),
-                identifier.source(),
+                function.name.source(),
             )]))?;
         }
         self.return_type = None;
