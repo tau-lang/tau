@@ -488,20 +488,6 @@ impl<'a> StmtVisitor<'a> for CppCodeGenerator {
         format!("while ({condition}) {body}").into()
     }
 
-    fn visit_for(
-        &mut self,
-        initializer: &'a Rc<Stmt>,
-        condition: &'a Expr,
-        increment: &'a Expr,
-        body: &'a Rc<Stmt>,
-    ) -> Self::Output {
-        let initializer = self.visit_stmt(initializer);
-        let condition = self.visit_expr(condition);
-        let increment = self.visit_expr(increment);
-        let body = self.visit_stmt(body);
-        format!("for ({initializer}; {condition}; {increment}) {body}").into()
-    }
-
     fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
         let expr = self.visit_expr(expr);
         format!("{expr};").into()

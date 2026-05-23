@@ -491,29 +491,6 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         Ok(None)
     }
 
-    fn visit_for(
-        &mut self,
-        initializer: &'a Rc<Stmt>,
-        condition: &'a Expr,
-        increment: &'a Expr,
-        body: &'a Rc<Stmt>,
-    ) -> Self::Output {
-        self.begin_scope();
-        self.visit_stmt(initializer)?;
-        if !self.visit_expr(condition)?.is_bool() {
-            Err(Error::new(vec![Diagnostic::new(
-                "expected condition in for loop to evaluate to a boolean".to_string(),
-                condition.source(),
-            )]))?
-        }
-        // We don't check the return type of the increment expression, because we allow
-        // any type
-        self.visit_expr(increment)?;
-        self.visit_stmt(body)?;
-        self.end_scope();
-        Ok(None)
-    }
-
     fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
         Ok(Some(self.visit_expr(expr)?))
     }

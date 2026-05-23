@@ -338,11 +338,28 @@ impl Parser {
         let body = Rc::new(self.stmt()?);
         Ok(Stmt::new(
             Source::union(&current.source(), &body.source()),
-            StmtType::For {
-                initializer,
-                condition,
-                increment,
-                body,
+            StmtType::Block {
+                statements: vec![
+                    initializer,
+                    Rc::new(Stmt::new(
+                        Source::union(&condition.source(), &body.source()),
+                        StmtType::While {
+                            condition,
+                            body: Rc::new(Stmt::new(
+                                body.source(),
+                                StmtType::Block {
+                                    statements: vec![
+                                        body,
+                                        Rc::new(Stmt::new(
+                                            increment.source(),
+                                            StmtType::ExprStmt(increment),
+                                        )),
+                                    ],
+                                },
+                            )),
+                        },
+                    )),
+                ],
             },
         ))
     }

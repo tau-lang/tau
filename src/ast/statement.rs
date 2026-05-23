@@ -41,12 +41,6 @@ pub enum StmtType {
         condition: Expr,
         body: Rc<Stmt>,
     },
-    For {
-        initializer: Rc<Stmt>,
-        condition: Expr,
-        increment: Expr,
-        body: Rc<Stmt>,
-    },
     ExprStmt(Expr),
 }
 
@@ -64,12 +58,6 @@ pub trait StmtVisitor<'a> {
             StmtType::Return { value } => self.visit_return(value),
             StmtType::Break => self.visit_break(),
             StmtType::While { condition, body } => self.visit_while(condition, body),
-            StmtType::For {
-                initializer,
-                condition,
-                increment,
-                body,
-            } => self.visit_for(initializer, condition, increment, body),
             StmtType::ExprStmt(expr) => self.visit_expr_stmt(expr),
         }
     }
@@ -88,14 +76,6 @@ pub trait StmtVisitor<'a> {
     fn visit_break(&mut self) -> Self::Output;
 
     fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output;
-
-    fn visit_for(
-        &mut self,
-        initializer: &'a Rc<Stmt>,
-        condition: &'a Expr,
-        increment: &'a Expr,
-        body: &'a Rc<Stmt>,
-    ) -> Self::Output;
 
     fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output;
 }
