@@ -94,16 +94,11 @@ impl<'a> Resolution<'a> {
     }
 
     fn member(&self, lookup: Rc<TypeDef>, member_name: &'a Identifier) -> Result<Rc<TypeDef>> {
-        if let TypeDef::Struct { name: _, members } = lookup.as_ref() {
-            let ref_type: Rc<TypeDef> = members
+        if let TypeDef::Struct(structure) = lookup.as_ref() {
+            let ref_type: Rc<TypeDef> = structure
+                .fields
                 .get(member_name.name())
                 .expect(&format!("expected struct contains field {member_name}"))
-                .clone();
-            self.ref_type(ref_type)
-        } else if let TypeDef::Module { types: _, fields } = lookup.as_ref() {
-            let ref_type = fields
-                .get(member_name.name())
-                .expect("expected modue contains field")
                 .clone();
             self.ref_type(ref_type)
         } else {
@@ -275,12 +270,8 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         arguments: &'a [Rc<Expr>],
     ) -> Result<Rc<TypeDef>> {
         let callee_type = self.visit_expr(callee)?;
-        if let TypeDef::Function {
-            parameters,
-            return_type,
-        } = &*callee_type
-        {
-            for (argument, para_type) in arguments.iter().zip(parameters) {
+        if let TypeDef::Function(function) = &*callee_type {
+            for (argument, para_type) in arguments.iter().zip(&function.parameters) {
                 let arg_type = self.visit_expr(argument)?;
                 if !arg_type.is_castable_to(&*self.ref_type(para_type.clone())?) {
                     Err(Error::new(vec![Diagnostic::new(
@@ -292,7 +283,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                     )]))?;
                 }
             }
-            self.ref_type(return_type.clone())
+            self.ref_type(function.return_type.clone())
         } else {
             Err(Error::new(vec![Diagnostic::new(
                 "expected call a function".to_string(),

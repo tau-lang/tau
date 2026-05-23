@@ -8,7 +8,7 @@ use crate::{
     },
     lexer::Lexer,
     parser::Parser,
-    typing::{TypeCell, TypeDef, TypeNames},
+    typing::{self, TypeCell, TypeDef, TypeNames},
 };
 
 /// This macro takes the name of a number type and returns a tuple `(String,
@@ -34,7 +34,7 @@ macro_rules! number {
         };
         (
             $name.to_string(),
-            Rc::new(TypeDef::make_number($name, size, float, signed)),
+            Rc::new(TypeDef::make_number(size, float, signed)),
         )
     }};
 }
@@ -88,10 +88,11 @@ impl Header {
             parameters.push(param_type.borrow().clone());
         }
 
-        Rc::new(TypeDef::Function {
+        Rc::new(TypeDef::Function(typing::Function {
+            name: None,
             parameters,
             return_type: return_type.borrow().clone(),
-        })
+        }))
     }
 }
 
@@ -99,12 +100,10 @@ impl<'a> DeclVisitor<'a> for Header {
     type Output = ();
 
     fn visit_import(&mut self, path: &[Identifier]) {
-        let mut module_name = "";
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
                 filename.push(name.name());
-                module_name = name.name();
             }
             filename.set_extension("tau");
             filename
@@ -116,23 +115,21 @@ impl<'a> DeclVisitor<'a> for Header {
         let ast = parser.parse().unwrap();
         let header = Header::new().headers(&ast);
         let (types, fields) = header.analysed();
-        self.fields.insert(
-            module_name.to_string(),
-            Rc::new(TypeDef::Module { types, fields }),
-        );
+        self.types.extend(types);
+        self.fields.extend(fields);
     }
 
     fn visit_struct(&mut self, structure: &'a Structure) {
         let struct_name = structure.name.name().to_string();
 
-        let mut members = HashMap::new();
+        let mut fields = HashMap::new();
         for (field_name, field_type) in &structure.fields {
-            members.insert(field_name.name().to_string(), field_type.borrow().clone());
+            fields.insert(field_name.name().to_string(), field_type.borrow().clone());
         }
         for decl in &structure.methods {
             if let Decl::Function(func) = decl.as_ref() {
-                members.insert(
-                    structure.name.name().to_string(),
+                fields.insert(
+                    func.name.name().to_string(),
                     self.make_function_type(&func.return_type, &func.params),
                 );
             }
@@ -140,10 +137,10 @@ impl<'a> DeclVisitor<'a> for Header {
 
         self.types.insert(
             struct_name,
-            Rc::new(TypeDef::Struct {
-                name: structure.name.clone(),
-                members,
-            }),
+            Rc::new(TypeDef::Struct(typing::Struct {
+                name: Some(structure.name.clone()),
+                fields,
+            })),
         );
     }
 

@@ -1,4 +1,3 @@
-use crate::ast::identifier::Identifier;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -6,136 +5,90 @@ use std::{
     rc::Rc,
 };
 
+use crate::ast::identifier::Identifier;
+
+#[derive(Debug, PartialEq)]
+pub struct Struct {
+    pub name: Option<Identifier>,
+    pub fields: TypeNames,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Function {
+    pub name: Option<Identifier>,
+    pub parameters: Vec<Rc<TypeDef>>,
+    pub return_type: Rc<TypeDef>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Number {
+    pub size: u8,
+    pub float: bool,
+    pub signed: bool,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TypeDef {
-    Module {
-        types: TypeNames,
-        fields: TypeNames,
-    },
-    Struct {
-        name: Identifier,
-        members: HashMap<String, Rc<TypeDef>>,
-    },
-    Function {
-        parameters: Vec<Rc<TypeDef>>,
-        return_type: Rc<TypeDef>,
-    },
-    Number {
-        name: &'static str,
-        size: u8,
-        float: bool,
-        signed: bool,
-    },
+    Struct(Struct),
+    Function(Function),
+    Number(Number),
     Native(&'static str),
+    Pointer(Rc<TypeDef>),
     Array(Rc<TypeDef>),
     Lazy(String),
     Unknown,
 }
 
 impl TypeDef {
-    pub fn make_number(name: &'static str, size: u8, float: bool, signed: bool) -> TypeDef {
-        Self::Number {
-            name,
+    pub fn make_number(size: u8, float: bool, signed: bool) -> TypeDef {
+        Self::Number(Number {
             size,
             float,
             signed,
-        }
+        })
     }
 
     pub fn is_castable_to(&self, to: &Self) -> bool {
         match self {
-            Self::Number {
-                name: _,
-                size,
-                float,
-                signed: _,
-            } => {
-                let (this_size, this_float) = (size, float);
-                if let Self::Number {
-                    name: _,
-                    size,
-                    float,
-                    signed: _,
-                } = to
-                {
-                    if *this_float {
-                        return *float && this_size <= size;
+            Self::Number(number) => {
+                let (this_size, this_float) = (number.size, number.float);
+                if let Self::Number(number) = to {
+                    if this_float {
+                        return number.float && this_size <= number.size;
                     } else {
-                        return this_size <= size;
+                        return this_size <= number.size;
                     }
                 } else {
                     return false;
                 }
             }
-            Self::Function {
-                parameters,
-                return_type,
-            } => {
-                let (this_para, this_return) = (parameters, return_type);
-                if let Self::Function {
-                    parameters,
-                    return_type,
-                } = to
-                {
-                    for (par_from, par_to) in this_para.iter().zip(parameters) {
-                        if !par_from.is_castable_to(par_to) {
+            Self::Function(function) => {
+                let (this_para, this_return) = (&function.parameters, &function.return_type);
+                if let Self::Function(function) = to {
+                    for (par_from, par_to) in this_para.iter().zip(&function.parameters) {
+                        if !par_from.is_castable_to(&par_to) {
                             return false;
                         }
                     }
-                    return this_return.is_castable_to(return_type);
+                    return this_return.is_castable_to(&function.return_type);
                 } else {
                     return false;
                 }
             }
-            Self::Struct { name, members: _ } => {
-                let this_name = name;
-                if let TypeDef::Struct { name, members: _ } = to {
-                    return this_name == name;
-                } else {
-                    return false;
-                }
-            }
-            Self::Native(this_name) => {
-                if let Self::Native(name) = to {
-                    return this_name == name;
-                } else {
-                    return false;
-                }
-            }
-            _ => {
-                panic!(
-                    "tried to typecheck the lazy type '{}' that was not dereferenced yet",
-                    self
-                )
-            }
+            _ => self == to,
         }
     }
 
     pub fn is_integer(&self) -> bool {
-        if let TypeDef::Number {
-            name: _,
-            size: _,
-            float,
-            signed: _,
-        } = *self
-        {
-            return !float;
+        if let TypeDef::Number(number) = self {
+            return !number.float;
         }
         false
     }
 
     pub fn is_number(&self) -> bool {
-        if let TypeDef::Number {
-            name,
-            size: _,
-            float: _,
-            signed: _,
-        } = *self
-        {
-            return matches!(
-                name,
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64"
-            );
+        if let TypeDef::Number(_) = self {
+            return true;
         }
         false
     }
@@ -152,25 +105,27 @@ impl TypeDef {
 impl Display for TypeDef {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
         match self {
-            Self::Module {
-                types: _,
-                fields: _,
-            } => formatter.write_str("<module>"),
-            Self::Struct { name, members: _ } => formatter.write_str(name.name()),
-            Self::Function {
-                parameters,
-                return_type,
-            } => write!(formatter, "{:?} -> {}", parameters, return_type),
-            Self::Array(array_type) => {
-                write!(formatter, "{:?}[]", array_type)
-            }
-            Self::Number {
-                name,
-                size: _,
-                float: _,
-                signed: _,
-            }
-            | Self::Native(name) => formatter.write_str(name),
+            Self::Struct(fields) => write!(formatter, "{:#?}", fields),
+            Self::Function(function) => write!(
+                formatter,
+                "{:?} -> {}",
+                function.parameters, function.return_type
+            ),
+            Self::Pointer(pointer_type) => write!(formatter, "*{}", pointer_type),
+            Self::Array(array_type) => write!(formatter, "{}[]", array_type),
+            Self::Number(number) => write!(
+                formatter,
+                "{}{}",
+                if number.float {
+                    'f'
+                } else if number.signed {
+                    'i'
+                } else {
+                    'u'
+                },
+                number.size
+            ),
+            Self::Native(name) => formatter.write_str(name),
             Self::Lazy(name) => formatter.write_str(name),
             Self::Unknown => formatter.write_str("Unknown"),
         }

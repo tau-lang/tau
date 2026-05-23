@@ -29,42 +29,46 @@ impl Display for CppSourceCode {
 impl From<&TypeDef> for CppSourceCode {
     fn from(type_def: &TypeDef) -> Self {
         CppSourceCode(match type_def {
-            TypeDef::Struct { name, members: _ } => format!("{}*", name),
-            TypeDef::Function {
-                parameters: _,
-                return_type: _,
-            } => todo!(),
+            TypeDef::Struct(structure) => {
+                if let Some(name) = &structure.name {
+                    format!("{}*", name)
+                } else {
+                    todo!()
+                }
+            }
+            TypeDef::Function(_) => todo!(),
             TypeDef::Array(name) => format!("{}*", CppSourceCode::from(name.as_ref())),
             TypeDef::Lazy(name) => panic!("lazy '{}' should have been deref", name),
-            TypeDef::Number {
-                name,
-                size: _,
-                float: _,
-                signed: _,
-            } => String::from(match *name {
-                "i8" => "char",
-                "i16" => "short",
-                "i32" => "int",
-                "i64" => "long",
-                "u8" => "unsigned char",
-                "u16" => "unsigned short",
-                "u32" => "unsigned int",
-                "u64" => "unsigned long",
-                "f32" => "float",
-                "f64" => "double",
-                _ => panic!(),
-            }),
+            TypeDef::Number(number) => {
+                if number.float {
+                    match number.size {
+                        32 => "float",
+                        64 => "double",
+                        _ => unreachable!(),
+                    }
+                    .into()
+                } else {
+                    let int = match number.size {
+                        8 => "char",
+                        16 => "short",
+                        32 => "int",
+                        64 => "long",
+                        _ => unreachable!(),
+                    };
+                    if number.signed {
+                        int.into()
+                    } else {
+                        format!("unsigned {int}")
+                    }
+                }
+            }
             TypeDef::Native(name) => String::from(match *name {
                 "str" => "char*",
                 "bool" => "int",
                 "void" => "void",
-                _ => panic!(),
+                _ => unreachable!(),
             }),
-            TypeDef::Module {
-                types: _,
-                fields: _,
-            }
-            | TypeDef::Unknown => panic!(),
+            other => panic!("unhandled type: {}", other),
         })
     }
 }
@@ -331,14 +335,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         let left = self.visit_expr(left);
         let right = right.name();
         match lookup.borrow().as_ref() {
-            TypeDef::Struct {
-                name: _,
-                members: _,
-            } => format!("{}->{}", left, right),
-            TypeDef::Module {
-                types: _,
-                fields: _,
-            } => format!("{}::{}", left, right),
+            TypeDef::Struct(_) => format!("{}->{}", left, right),
             error => panic!(
                 "can only lookup structs and modules, not {:?} at {:?} with {:?}",
                 error, left, right
@@ -389,8 +386,12 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         fields: &'a [(Identifier, Rc<Expr>)],
     ) -> CppSourceCode {
         let struct_type = struct_type.borrow();
-        let struct_type = if let TypeDef::Struct { name, members: _ } = struct_type.as_ref() {
-            name.name()
+        let struct_type = if let TypeDef::Struct(structure) = struct_type.as_ref() {
+            if let Some(name) = &structure.name {
+                name
+            } else {
+                todo!()
+            }
         } else {
             unreachable!()
         };
