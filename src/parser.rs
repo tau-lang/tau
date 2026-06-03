@@ -203,16 +203,10 @@ impl Parser {
             }
         }
 
-        let mut methods = Vec::new();
-        while *self.peek().token_type() != TokenType::BraceRight {
-            methods.push(Rc::new(self.decl_modifier(Modifiers::default())?));
-        }
-
         self.consume(&TokenType::BraceRight)?;
         Ok(Decl::Struct(Structure {
             name: Identifier::from(name),
             fields,
-            methods,
         }))
     }
 

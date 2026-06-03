@@ -126,15 +126,6 @@ impl<'a> DeclVisitor<'a> for Header {
         for (field_name, field_type) in &structure.fields {
             fields.insert(field_name.name().to_string(), field_type.borrow().clone());
         }
-        for decl in &structure.methods {
-            if let Decl::Function(func) = decl.as_ref() {
-                fields.insert(
-                    func.name.name().to_string(),
-                    self.make_function_type(&func.return_type, &func.params),
-                );
-            }
-        }
-
         self.types.insert(
             struct_name,
             Rc::new(TypeDef::Struct(typing::Struct {

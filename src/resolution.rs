@@ -517,9 +517,6 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
             let ref_type = self.ref_type(member_type.borrow().clone())?;
             *member_type.borrow_mut() = ref_type;
         }
-        for method in &structure.methods {
-            self.visit_decl(&method)?;
-        }
         self.end_scope();
         Ok(())
     }

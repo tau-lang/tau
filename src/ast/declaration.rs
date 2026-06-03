@@ -2,12 +2,10 @@ use crate::{
     ast::{expression::Expr, identifier::Identifier, statement::Stmt},
     typing::TypeCell,
 };
-use std::rc::Rc;
 
 pub struct Structure {
     pub name: Identifier,
     pub fields: Vec<(Identifier, TypeCell)>,
-    pub methods: Vec<Rc<Decl>>,
 }
 
 /// Modifiers are attributes of a element that change it's behaviour.

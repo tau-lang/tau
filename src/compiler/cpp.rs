@@ -119,19 +119,6 @@ where
 
 pub struct CppHeaderGenerator;
 
-impl CppHeaderGenerator {
-    fn visit_method(&mut self, function: &Function) -> CppSourceCode {
-        let return_type = CppSourceCode::from(function.return_type.borrow().as_ref());
-        let name = CppSourceCode::from(&function.name);
-        let params = visit_vec(
-            &function.params,
-            |x| format!("{}", CppSourceCode::from(x)),
-            ", ",
-        );
-        CppSourceCode(format!("{return_type} {name}({params});"))
-    }
-}
-
 impl<'a> Generator<'a> for CppHeaderGenerator {
     fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
         let mut file = File::create(output).expect("error reading file");
@@ -174,18 +161,7 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
             |x| format!("  {};", CppSourceCode::from(x)),
             "\n",
         );
-        let methods = visit_vec(
-            &structure.methods,
-            |decl| {
-                if let Decl::Function(function) = decl.as_ref() {
-                    format!("  {}", self.visit_method(function))
-                } else {
-                    panic!()
-                }
-            },
-            "\n",
-        );
-        format!("class {name} {{\npublic:\n{fields}\n{methods}\n}};").into()
+        format!("class {name} {{\npublic:\n{fields}}};").into()
     }
 
     fn visit_function(&mut self, function: &Function) -> CppSourceCode {
@@ -233,23 +209,6 @@ impl<'a> CppCodeGenerator {
             _ => panic!("unsupported return type"),
         };
         format!("int main() {{\n{body}}}\n").into()
-    }
-
-    fn visit_method(&mut self, struct_name: &Identifier, function: &Function) -> CppSourceCode {
-        let struct_name = CppSourceCode::from(struct_name);
-        let name = CppSourceCode::from(&function.name);
-        let return_type = CppSourceCode::from(&function.return_type);
-        let params = visit_vec(
-            &function.params,
-            |x| format!("{}", CppSourceCode::from(x)),
-            ", ",
-        );
-        let body = visit_vec(
-            &function.body,
-            |stmt| format!("{}", self.visit_stmt(stmt)),
-            "\n",
-        );
-        format!("{return_type} {struct_name}::{name}({params}) {{\n{body}\n}}").into()
     }
 }
 
@@ -501,19 +460,8 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         CppSourceCode::default()
     }
 
-    fn visit_struct(&mut self, structure: &Structure) -> CppSourceCode {
-        let struct_type = &structure.name;
-        visit_vec(
-            &structure.methods,
-            |method| {
-                if let Decl::Function(function) = method.as_ref() {
-                    format!("{}", self.visit_method(struct_type, function))
-                } else {
-                    panic!("expected method")
-                }
-            },
-            "\n",
-        )
+    fn visit_struct(&mut self, _: &Structure) -> CppSourceCode {
+        CppSourceCode::default()
     }
 
     fn visit_function(&mut self, function: &Function) -> Self::Output {
