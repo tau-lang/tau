@@ -121,20 +121,18 @@ impl Parser {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        self.consume(&TokenType::ParenRight)?;
+        let end = self.consume(&TokenType::ParenRight)?;
 
         let return_type = if *self.peek().token_type() == TokenType::To {
             self.consume(&TokenType::To)?;
-            let type_name = self.advance();
-            if !type_name.token_type().is_identifer() {
-                return Err(parser_expected(
-                    "expected a return type identifier",
-                    type_name,
-                ));
-            }
-            TypeDef::Lazy(type_name.identifier().to_string())
+            self.decl_type()?
         } else {
-            TypeDef::Lazy("void".to_string())
+            Rc::new(TypeDef::Path(vec![Identifier::new(
+                "void".to_string(),
+                // TODO: replace source with None, as we can not find any source for an implicit
+                // token. Maybe make source optional?
+                end.source(),
+            )]))
         };
 
         let body = if modifiers.is_extern {
@@ -145,7 +143,7 @@ impl Parser {
 
         Ok(Decl::Function(Function {
             name: Identifier::from(name),
-            return_type: RefCell::new(Rc::new(return_type)),
+            return_type: RefCell::new(return_type),
             params,
             body,
             modifiers,
@@ -216,14 +214,31 @@ impl Parser {
             return Err(parser_expected("expected a type identifier", name));
         }
         self.consume(&TokenType::Colon)?;
-        let type_name = self.advance();
-        if !type_name.token_type().is_identifer() {
-            return Err(parser_expected("expected a type definition", type_name));
+        let type_def = self.decl_type()?;
+        Ok((Identifier::from(name), RefCell::new(type_def)))
+    }
+
+    fn decl_type(&mut self) -> Result<Rc<TypeDef>> {
+        let next = self.advance();
+        match next.token_type() {
+            TokenType::Mul => Ok(Rc::new(TypeDef::RawPointer(self.decl_type()?))),
+            TokenType::BracketLeft => {
+                let type_def = Rc::new(TypeDef::Array(self.decl_type()?));
+                self.consume(&TokenType::BracketRight)?;
+                Ok(type_def)
+            }
+            TokenType::Identifier(_) => {
+                let mut path = vec![next.into()];
+                while *self.peek().token_type() == TokenType::Dot {
+                    // TODO: parse the path
+                    self.consume(&TokenType::Dot)?;
+                    let id = self.advance().into();
+                    path.push(id);
+                }
+                Ok(Rc::new(TypeDef::Path(path)))
+            }
+            _ => Err(parser_expected("expected a type definition", next)),
         }
-        Ok((
-            Identifier::from(name),
-            RefCell::new(Rc::new(TypeDef::Lazy(type_name.identifier().to_string()))),
-        ))
     }
 
     pub(crate) fn stmt(&mut self) -> Result<Stmt> {
@@ -304,7 +319,7 @@ impl Parser {
                     type_name,
                 ));
             }
-            TypeDef::Lazy(type_name.identifier().to_string())
+            TypeDef::Path(vec![type_name.into()])
         } else {
             TypeDef::Unknown
         };
@@ -539,9 +554,7 @@ impl Parser {
         Ok(Expr::new(
             Source::union(&array_type.source(), &current.source()),
             ExprKind::CreateArray {
-                array_type: RefCell::new(Rc::new(TypeDef::Lazy(
-                    array_type.identifier().to_string(),
-                ))),
+                array_type: RefCell::new(Rc::new(TypeDef::Path(vec![array_type.into()]))),
                 array_size,
                 fields,
             },
@@ -584,8 +597,9 @@ impl Parser {
         Ok(Expr::new(
             Source::union(&struct_name.source(), &current.source()),
             ExprKind::CreateStruct {
-                struct_type: RefCell::new(Rc::new(TypeDef::Lazy(
-                    struct_name.identifier().to_string(),
+                struct_type: RefCell::new(Rc::new(TypeDef::Path(
+                    // TODO: include full module path
+                    vec![struct_name.into()],
                 ))),
                 fields,
             },

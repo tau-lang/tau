@@ -79,13 +79,6 @@ impl Token {
         &self.token_type
     }
 
-    pub fn identifier(&self) -> &str {
-        match self.token_type() {
-            TokenType::Identifier(name) => name,
-            TokenType::VSelf => "self",
-            _ => panic!("expected identifier"),
-        }
-    }
     pub fn source(&self) -> Source {
         self.source.clone()
     }

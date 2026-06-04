@@ -2,9 +2,10 @@ use crate::lexer::{Lexer, Source, Token};
 use std::{
     error,
     fmt::{self, Debug, Display, Formatter},
+    result,
 };
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
     Error::new(vec![Diagnostic::new(expected.to_string(), next.source())])

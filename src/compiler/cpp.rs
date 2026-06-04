@@ -30,15 +30,17 @@ impl From<&TypeDef> for CppSourceCode {
     fn from(type_def: &TypeDef) -> Self {
         CppSourceCode(match type_def {
             TypeDef::Struct(structure) => {
-                if let Some(name) = &structure.name {
-                    format!("{}*", name)
-                } else {
-                    todo!()
+                let mut path = String::new();
+                path.push_str(structure.name[0].name());
+                for item in &structure.name[1..] {
+                    path.push_str("::");
+                    path.push_str(item.name());
                 }
+                path.into()
             }
             TypeDef::Function(_) => todo!(),
             TypeDef::Array(name) => format!("{}*", CppSourceCode::from(name.as_ref())),
-            TypeDef::Lazy(name) => panic!("lazy '{}' should have been deref", name),
+            TypeDef::Path(name) => panic!("path '{:?}' should have been deref", name),
             TypeDef::Number(number) => {
                 if number.float {
                     match number.size {
@@ -68,6 +70,7 @@ impl From<&TypeDef> for CppSourceCode {
                 "void" => "void",
                 _ => unreachable!(),
             }),
+            TypeDef::RawPointer(ptr) => format!("{ptr}*"),
             other => panic!("unhandled type: {}", other),
         })
     }
@@ -344,16 +347,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         struct_type: &TypeCell,
         fields: &'a [(Identifier, Rc<Expr>)],
     ) -> CppSourceCode {
-        let struct_type = struct_type.borrow();
-        let struct_type = if let TypeDef::Struct(structure) = struct_type.as_ref() {
-            if let Some(name) = &structure.name {
-                name
-            } else {
-                todo!()
-            }
-        } else {
-            unreachable!()
-        };
+        let struct_type: CppSourceCode = struct_type.into();
         let fields = visit_vec(
             fields,
             |(field_name, field_init)| {
