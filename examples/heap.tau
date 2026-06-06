@@ -1,0 +1,50 @@
+struct Node {
+  next: *Node,
+  value: f64
+}
+
+struct List {
+  head: *Node,
+  tail: *Node,
+  size: u64
+}
+
+extern fn malloc(size: u64) -> *any
+
+extern fn free(ptr: *any)
+
+extern fn puts(text: str)
+
+fn node(next: *Node, value: f64) -> *Node {
+  let new: *Node = malloc(16);
+  (*new).next = next;
+  (*new).value = value;
+  return new;
+}
+
+fn push(list: List, e: f64) {
+  let new = node(list.head, e);
+  list.head = new;
+  list.size += 1;
+}
+
+fn pop(list: List) -> f64 {
+  let cur = list.head;
+  let val = peek(list);
+  list.head = *(list.head).next;
+  free(cur);
+  return val;
+}
+
+fn peek(list: List) -> f64 =
+  *(list.head).value
+
+fn main() {
+  let empty: *Node = malloc(0);
+
+  let list = List { head=empty, tail=empty, size=100 };
+  push(list, 1);
+  push(list, 2);
+
+  puts("this is a placeholder");
+}

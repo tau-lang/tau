@@ -21,13 +21,13 @@ fn sub(l: Vec2, r: Vec2) -> Vec2 =
 fn length(v: Vec2) -> f64 =
     sqrt(v.x*v.x + v.y*v.y)
 
-fn norm(v: Vec2) -> Vec2 {
-    let len = length(v)
-    if (len == 0) return ZERO
-    return vec2(v.x / len, v.y / len)
-}
+fn norm(v: Vec2) -> Vec2 =
+    let len = length(v);
+    in
+        if (len == 0) ZERO
+        else vec2(v.x / len, v.y / len)
 
 io fn main() {
-    let _a: Vec2 = add(vec2(3, 4), vec2(4, -2))
-    puts("Hello, World!")
+    let _ = add(vec2(3, 4), vec2(4, -2));
+    puts("Hello, World!");
 }

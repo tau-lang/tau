@@ -70,7 +70,8 @@ impl From<&TypeDef> for CppSourceCode {
                 "void" => "void",
                 _ => unreachable!(),
             }),
-            TypeDef::RawPointer(ptr) => format!("{ptr}*"),
+            TypeDef::RawPointer(ptr) => format!("{}*", CppSourceCode::from(ptr.as_ref())),
+            TypeDef::Any => "void".into(),
             other => panic!("unhandled type: {}", other),
         })
     }
@@ -251,6 +252,8 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
             TokenType::Sub => format!("-{}", self.visit_expr(right)),
             TokenType::Not => format!("!{}", self.visit_expr(right)),
+            TokenType::Star => format!("(*{})", self.visit_expr(right)),
+            TokenType::Ref => format!("(&{})", self.visit_expr(right)),
             _ => todo!(),
         }
         .into()
@@ -267,7 +270,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         match operator.token_type() {
             TokenType::Add => render_op("+"),
             TokenType::Sub => render_op("-"),
-            TokenType::Mul => render_op("*"),
+            TokenType::Star => render_op("*"),
             TokenType::Div => render_op("/"),
             TokenType::Eq => render_op("=="),
             TokenType::Neq => render_op("!="),
@@ -277,11 +280,11 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
             TokenType::Geq => render_op(">="),
             TokenType::And => render_op("&&"),
             TokenType::Or => render_op("||"),
-            TokenType::Xor => render_op("|"),
+            TokenType::Vbar => render_op("|"),
             TokenType::Set => render_op("="),
             TokenType::SetAdd => render_op("+="),
             TokenType::SetSub => render_op("-="),
-            TokenType::SetMul => render_op("*="),
+            TokenType::SetStar => render_op("*="),
             TokenType::SetDiv => render_op("/="),
             _ => todo!("{:?}", operator),
         }
@@ -297,7 +300,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         let left = self.visit_expr(left);
         let right = right.name();
         match lookup.borrow().as_ref() {
-            TypeDef::Struct(_) => format!("{}->{}", left, right),
+            TypeDef::Struct(_) => format!("{}.{}", left, right),
             error => panic!(
                 "can only lookup structs and modules, not {:?} at {:?} with {:?}",
                 error, left, right
@@ -359,7 +362,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
             },
             ", ",
         );
-        format!("new {struct_type}{{{fields}}}").into()
+        format!("{struct_type}{{{fields}}}").into()
     }
 
     fn visit_if(

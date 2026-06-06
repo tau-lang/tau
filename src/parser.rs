@@ -7,7 +7,7 @@ use crate::{
     },
     error::{Result, parser_expected},
     lexer::{Source, Token, TokenType},
-    typing::TypeDef,
+    typing::{self, TypeDef},
 };
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
@@ -56,10 +56,7 @@ impl Parser {
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
             token_type => Err(parser_expected(
-                format!(
-                    "Found {:?} expected import, function, struct or const",
-                    &token_type
-                ),
+                format!("Found {:?} expected declaration", &token_type),
                 token,
             )),
         }
@@ -221,7 +218,7 @@ impl Parser {
     fn decl_type(&mut self) -> Result<Rc<TypeDef>> {
         let next = self.advance();
         match next.token_type() {
-            TokenType::Mul => Ok(Rc::new(TypeDef::RawPointer(self.decl_type()?))),
+            TokenType::Star => Ok(Rc::new(TypeDef::RawPointer(self.decl_type()?))),
             TokenType::BracketLeft => {
                 let type_def = Rc::new(TypeDef::Array(self.decl_type()?));
                 self.consume(&TokenType::BracketRight)?;
@@ -230,12 +227,28 @@ impl Parser {
             TokenType::Identifier(_) => {
                 let mut path = vec![next.into()];
                 while *self.peek().token_type() == TokenType::Dot {
-                    // TODO: parse the path
                     self.consume(&TokenType::Dot)?;
                     let id = self.advance().into();
                     path.push(id);
                 }
                 Ok(Rc::new(TypeDef::Path(path)))
+            }
+            TokenType::ParenLeft => {
+                let mut parameters = vec![self.decl_type()?];
+                while *self.peek().token_type() == TokenType::Comma {
+                    self.consume(&TokenType::Comma)?;
+                    let param = self.decl_type()?;
+                    parameters.push(param);
+                }
+                self.consume(&TokenType::To)?;
+                let return_type = self.decl_type()?;
+                self.consume(&TokenType::ParenRight)?;
+                Ok(Rc::new(TypeDef::Function(typing::Function {
+                    // TODO: replace with auto-generated function type
+                    name: Vec::new(),
+                    parameters,
+                    return_type,
+                })))
             }
             _ => Err(parser_expected("expected a type definition", next)),
         }
@@ -248,11 +261,11 @@ impl Parser {
             TokenType::Let => self.stmt_let(false),
             TokenType::Return => {
                 let current = self.advance();
+                let expr = self.expr()?;
+                self.consume(&TokenType::Semicolon)?;
                 Ok(Stmt::new(
-                    current.source(),
-                    StmtType::Return {
-                        value: self.expr()?,
-                    },
+                    Source::union(&current.source(), &expr.source()),
+                    StmtType::Return { value: expr },
                 ))
             }
             TokenType::Break => {
@@ -263,6 +276,9 @@ impl Parser {
             TokenType::While => self.stmt_while(),
             _ => {
                 let expr = self.expr()?;
+                if *self.peek().token_type() == TokenType::Semicolon {
+                    self.advance();
+                }
                 Ok(Stmt::new(expr.source().clone(), StmtType::ExprStmt(expr)))
             }
         }
@@ -312,24 +328,18 @@ impl Parser {
         }
         let var_type = if *self.peek().token_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
-            let type_name = self.advance();
-            if !type_name.token_type().is_identifer() {
-                return Err(parser_expected(
-                    "expected a type identifier for the variable",
-                    type_name,
-                ));
-            }
-            TypeDef::Path(vec![type_name.into()])
+            self.decl_type()?
         } else {
-            TypeDef::Unknown
+            Rc::new(TypeDef::Unknown)
         };
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
+        self.consume(&TokenType::Semicolon)?;
         Ok(Stmt::new(
             Source::union(&start.source(), &initializer.source()),
             StmtType::Let {
                 name: Identifier::from(name),
-                var_type: RefCell::new(Rc::new(var_type)),
+                var_type: RefCell::new(var_type),
                 initializer,
             },
         ))
@@ -337,14 +347,12 @@ impl Parser {
 
     fn stmt_for(&mut self) -> Result<Stmt> {
         let current = self.advance();
-        self.consume(&TokenType::ParenLeft)?;
         let initializer = Rc::new(self.stmt()?);
-        self.consume(&TokenType::Colon)?;
+        self.consume(&TokenType::Semicolon)?;
         let condition = self.expr()?;
-        self.consume(&TokenType::Colon)?;
+        self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
-        self.consume(&TokenType::ParenRight)?;
-        let body = Rc::new(self.stmt()?);
+        let body = Rc::new(self.stmt_block()?);
         Ok(Stmt::new(
             Source::union(&current.source(), &body.source()),
             StmtType::Block {
@@ -375,10 +383,8 @@ impl Parser {
 
     fn stmt_while(&mut self) -> Result<Stmt> {
         let current = self.advance();
-        self.consume(&TokenType::ParenLeft)?;
         let condition = self.expr()?;
-        self.consume(&TokenType::ParenRight)?;
-        let body = Rc::new(self.stmt()?);
+        let body = Rc::new(self.stmt_block()?);
         Ok(Stmt::new(
             Source::union(&current.source(), &body.source()),
             StmtType::While { condition, body },
@@ -436,14 +442,13 @@ impl Parser {
             }
             TokenType::Identifier(_) => self.expr_identifier(next),
             TokenType::VSelf => self.expr_self(next),
-            TokenType::Add | TokenType::Sub | TokenType::Not => self.expr_unary(next),
+            TokenType::Add | TokenType::Sub | TokenType::Not | TokenType::Star | TokenType::Ref => {
+                self.expr_unary(next)
+            }
             TokenType::ParenLeft => self.expr_grouping(),
             TokenType::If => self.expr_if(),
             x => Err(parser_expected(
-                format!(
-                    "found {:?} but expected if, +, - , number, bool, brace or identifier",
-                    x
-                ),
+                format!("found {:?} expected expression", x),
                 next,
             ))?,
         }
@@ -514,7 +519,7 @@ impl Parser {
             self.advance();
             self.expr_create_array(next, None)
         } else {
-            // A index was given, can be a sized array or
+            // A index was given, can be a sized array or array index
             let expr = Rc::new(self.expr()?);
             let current = self.consume(&TokenType::BracketRight)?;
             if *self.peek().token_type() == TokenType::BraceLeft {
@@ -629,17 +634,15 @@ impl Parser {
     }
 
     fn expr_if(&mut self) -> Result<Expr> {
-        let current = self.consume(&TokenType::ParenLeft)?;
         let condition = Rc::new(self.expr()?);
-        self.consume(&TokenType::ParenRight)?;
         let if_branch = Rc::new(self.stmt()?);
         let (else_branch, source) = if *self.peek().token_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
             let else_branch = self.stmt()?;
-            let source = Source::union(&current.source(), &else_branch.source());
+            let source = Source::union(&condition.source(), &else_branch.source());
             (Some(Rc::new(else_branch)), source)
         } else {
-            let source = Source::union(&current.source(), &if_branch.source());
+            let source = Source::union(&condition.source(), &if_branch.source());
             (None, source)
         };
         Ok(Expr::new(
@@ -671,6 +674,7 @@ impl Parser {
         match operator {
             TokenType::Not => 1,
             TokenType::Add | TokenType::Sub => 6,
+            TokenType::Ref | TokenType::Star => 14,
             unexpected => unreachable!("Unexpected operator: {:?}", unexpected),
         }
     }
@@ -680,17 +684,17 @@ impl Parser {
             TokenType::Set
             | TokenType::SetAdd
             | TokenType::SetSub
-            | TokenType::SetMul
+            | TokenType::SetStar
             | TokenType::SetDiv => Some((1, 2)),
-            TokenType::And | TokenType::Or | TokenType::Xor => Some((3, 4)),
+            TokenType::And | TokenType::Or | TokenType::Vbar => Some((3, 4)),
             TokenType::Low
             | TokenType::Leq
             | TokenType::Eq
             | TokenType::Gre
             | TokenType::Geq
             | TokenType::Neq => Some((5, 6)),
-            TokenType::Add | TokenType::Sub => Some((7, 8)),
-            TokenType::Mul | TokenType::Div => Some((9, 10)),
+            TokenType::Add | TokenType::Sub | TokenType::Mod => Some((7, 8)),
+            TokenType::Star | TokenType::Div => Some((9, 10)),
             TokenType::Dot => Some((12, 11)),
             _ => None,
         }

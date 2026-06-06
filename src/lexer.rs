@@ -121,20 +121,22 @@ pub enum TokenType {
     BracketLeft,  // [
     BracketRight, // ]
     Dot,
-    Comma, // ,
-    Colon, // :
-    To,    // ->
+    Comma,     // ,
+    Colon,     // :
+    Semicolon, // ;
+    To,        // ->
 
     // Operators
     Add,
     Sub,
     Div,
-    Mul,
+    Star,
     Set,
     SetAdd,
     SetSub,
-    SetMul,
+    SetStar,
     SetDiv,
+    Mod,
     Low,
     Gre,
     Geq,
@@ -144,7 +146,8 @@ pub enum TokenType {
     Not,
     And,
     Or,
-    Xor,
+    Vbar,
+    Ref,
 
     // Keywords
     Import,
@@ -229,6 +232,7 @@ impl Lexer<'_> {
                 ',' => TokenType::Comma,
                 '.' => TokenType::Dot,
                 ':' => TokenType::Colon,
+                ';' => TokenType::Semicolon,
                 '+' => {
                     if self.matchc('=') {
                         TokenType::SetAdd
@@ -247,9 +251,9 @@ impl Lexer<'_> {
                 }
                 '*' => {
                     if self.matchc('=') {
-                        TokenType::SetMul
+                        TokenType::SetStar
                     } else {
-                        TokenType::Mul
+                        TokenType::Star
                     }
                 }
                 '/' => {
@@ -267,18 +271,19 @@ impl Lexer<'_> {
                         TokenType::Div
                     }
                 }
+                '%' => TokenType::Mod,
                 '&' => {
                     if self.matchc('&') {
                         TokenType::And
                     } else {
-                        Err(lexer_expected("unexpected character", self))?
+                        TokenType::Ref
                     }
                 }
                 '|' => {
                     if self.matchc('|') {
                         TokenType::Or
                     } else {
-                        TokenType::Xor
+                        TokenType::Vbar
                     }
                 }
                 '=' => {

@@ -87,7 +87,13 @@ impl TypeDef {
                     false
                 }
             }
-            _ => self == to,
+            _ => {
+                if let Self::Any = to {
+                    true
+                } else {
+                    self == to
+                }
+            }
         }
     }
 

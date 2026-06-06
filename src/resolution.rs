@@ -75,15 +75,17 @@ impl<'a> Resolution<'a> {
 
     fn member(&self, lookup: Rc<TypeDef>, member_name: &'a Identifier) -> Result<Rc<TypeDef>> {
         if let TypeDef::Struct(structure) = lookup.as_ref() {
-            let ref_type: Rc<TypeDef> = structure
-                .fields
-                .get(member_name.name())
-                .expect(&format!("expected struct contains field {member_name}"))
-                .clone();
-            self.types.lookup_type(&ref_type)
+            if let Some(ref_type) = structure.fields.get(member_name.name()) {
+                self.types.lookup_type(&ref_type.clone())
+            } else {
+                Err(Error::new(vec![Diagnostic::new(
+                    format!("expected struct {lookup} contains field {member_name}"),
+                    member_name.source(),
+                )]))
+            }
         } else {
             Err(Error::new(vec![Diagnostic::new(
-                "expected struct".to_string(),
+                format!("expected struct, got {lookup} which has no {member_name}"),
                 member_name.source(),
             )]))
         }
@@ -102,7 +104,7 @@ impl<'a> Resolution<'a> {
 impl<'a> ExprVisitor<'a> for Resolution<'a> {
     type Output = Result<Rc<TypeDef>>;
 
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Result<Rc<TypeDef>> {
+    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Self::Output {
         let throw_error = |msg: &str| {
             Err(Error::new(vec![Diagnostic::new(
                 msg.to_string(),
@@ -123,6 +125,14 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 }
                 Ok(r)
             }
+            TokenType::Star => {
+                if let TypeDef::RawPointer(inner) = r.as_ref() {
+                    Ok(inner.clone())
+                } else {
+                    throw_error("can only deref pointers")
+                }
+            }
+            TokenType::Ref => Ok(Rc::new(TypeDef::RawPointer(r))),
             _ => unreachable!("{:?}", operator),
         }
     }
@@ -144,11 +154,11 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         match operator.token_type() {
             TokenType::Add
             | TokenType::Sub
-            | TokenType::Mul
+            | TokenType::Star
             | TokenType::Div
             | TokenType::SetAdd
             | TokenType::SetSub
-            | TokenType::SetMul
+            | TokenType::SetStar
             | TokenType::SetDiv => {
                 if !l.is_number() {
                     throw_error("the left-hand-side is expected to be a number")?;
@@ -163,7 +173,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 }
                 throw_error("number types of left and right side do not match")
             }
-            TokenType::And | TokenType::Or | TokenType::Xor => {
+            TokenType::And | TokenType::Or | TokenType::Vbar => {
                 if !l.is_bool() {
                     throw_error("the left-hand-side is expected to be a boolean")?;
                 }
@@ -251,16 +261,27 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
     ) -> Result<Rc<TypeDef>> {
         let callee_type = self.visit_expr(callee)?;
         if let TypeDef::Function(function) = &*callee_type {
+            if arguments.len() != function.parameters.len() {
+                return Err(Error::new(vec![Diagnostic::new(
+                    format!(
+                        "expected {} arguments, got {}",
+                        function.parameters.len(),
+                        arguments.len()
+                    ),
+                    callee.source(),
+                )]));
+            }
+
             for (argument, para_type) in arguments.iter().zip(&function.parameters) {
                 let arg_type = self.visit_expr(argument)?;
                 if !arg_type.is_castable_to(&*self.types.lookup_type(para_type)?) {
-                    Err(Error::new(vec![Diagnostic::new(
+                    return Err(Error::new(vec![Diagnostic::new(
                         format!(
                             "argument type '{}' supplied to function does not match parameter type '{}'",
                             arg_type, para_type
                         ),
                         callee.source(),
-                    )]))?;
+                    )]));
                 }
             }
             self.types.lookup_type(&function.return_type)
@@ -335,24 +356,32 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         match self.visit_stmt(if_branch) {
             Ok(None) => Ok(self.types.lookup_name("void")),
             Ok(Some(if_type)) => {
+                let if_type = self.types.lookup_type(&if_type)?;
                 if let Some(else_branch) = else_branch {
                     match self.visit_stmt(else_branch) {
                         Ok(Some(else_type)) => {
-                            if if_type != else_type {
-                                Err(Error::new(vec![Diagnostic::new(
-                                    "if branch and else branch have different return types"
-                                        .to_string(),
-                                    Source::union(&condition.source(), &else_branch.source()),
-                                )]))?
+                            let else_type = self.types.lookup_type(&else_type)?;
+                            if if_type.is_castable_to(&else_type) {
+                                *expression_type.borrow_mut() = else_type.clone();
+                                return Ok(else_type);
                             }
-                            *expression_type.borrow_mut() = if_type.clone();
-                            Ok(if_type)
+                            if else_type.is_castable_to(&if_type) {
+                                *expression_type.borrow_mut() = if_type.clone();
+                                return Ok(if_type);
+                            }
+
+                            Err(Error::new(vec![Diagnostic::new(
+                                format!(
+                                    "if branch returns {if_type} while else branch returns {else_type}"
+                                ),
+                                Source::union(&condition.source(), &else_branch.source()),
+                            )]))?
                         }
                         Ok(None) => {
                             let void = self.types.lookup_name("void");
                             if if_type != void {
                                 Err(Error::new(vec![Diagnostic::new(
-                                    "if branch and else branch have different return types"
+                                    "if branch returns {if_type} while else branch returns nothing"
                                         .to_string(),
                                     Source::union(&condition.source(), &else_branch.source()),
                                 )]))?
@@ -423,20 +452,20 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         var_type: &'a TypeCell,
         initializer: &'a Expr,
     ) -> Self::Output {
-        let mut real_type = self.visit_expr(initializer)?;
-        if let TypeDef::Path(expected_type) = var_type.borrow().as_ref() {
-            let ref_type = self.types.lookup_path(expected_type)?;
-            if real_type.is_castable_to(&ref_type) {
-                real_type = ref_type;
-            } else {
-                Err(Error::new(vec![Diagnostic::new(
-                    "assiged a value that does not have the declared type".to_string(),
-                    name.source(),
-                )]))?;
-            }
+        let real_type = self.visit_expr(initializer)?;
+        let expected_type = self.types.lookup_type(&*var_type.borrow())?;
+        if let TypeDef::Unknown = *expected_type {
+            self.declare_variable(name, real_type.clone())?;
+            *var_type.borrow_mut() = real_type;
+        } else if real_type.is_castable_to(&expected_type) {
+            self.declare_variable(name, expected_type.clone())?;
+            *var_type.borrow_mut() = expected_type;
+        } else {
+            return Err(Error::new(vec![Diagnostic::new(
+                format!("expr type {real_type} can not be cast to {expected_type}"),
+                initializer.source(),
+            )]));
         }
-        self.declare_variable(name, real_type.clone())?;
-        *var_type.borrow_mut() = real_type;
         Ok(None)
     }
 
@@ -542,7 +571,7 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         )?;
         if !real.is_castable_to(ref_type.as_ref()) {
             Err(Error::new(vec![Diagnostic::new(
-                format!("could not cast {}", real),
+                format!("could not cast return type {} to {}", real, ref_type),
                 function.name.source(),
             )]))?;
         }
