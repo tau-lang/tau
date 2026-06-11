@@ -8,9 +8,11 @@ pub struct Structure {
     pub fields: Vec<(Identifier, TypeCell)>,
 }
 
-/// Modifiers are attributes of a element that change it's behaviour.
-/// The structure contains a list of modifiers and if they are enabled or
-/// not.
+/// Modifiers are attributes of a element that change it's behavior. They are
+/// written before an function, structure or parameter declaration to add
+/// additional functionality to it. Currently only the extern and io modifier
+/// exists. The structure contains a list of modifiers and if they are enabled
+/// or not.
 #[derive(Default)]
 pub struct Modifiers {
     pub is_extern: bool,

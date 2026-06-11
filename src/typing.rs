@@ -39,6 +39,8 @@ pub enum TypeDef {
     RawPointer(Rc<TypeDef>),
     Array(Rc<TypeDef>),
     Path(TypePath),
+    /// We need the Any type for compability with the c void* type. This should
+    /// be replaced with generics in the future.
     Any,
     Unknown,
 }
