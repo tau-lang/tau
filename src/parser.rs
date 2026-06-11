@@ -9,7 +9,11 @@ use crate::{
     lexer::{Source, Token, TokenType},
     typing::{self, TypeDef},
 };
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+    rc::Rc,
+};
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
@@ -190,9 +194,10 @@ impl Parser {
         };
         self.consume(&TokenType::BraceLeft)?;
 
-        let mut fields = Vec::new();
+        let mut fields = HashMap::new();
         while self.peek().token_type().is_identifer() {
-            fields.push(self.decl_type_def()?);
+            let (field_name, field_type) = self.decl_type_def()?;
+            fields.insert(field_name, field_type);
             if *self.peek().token_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma)?;
             }

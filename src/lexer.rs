@@ -12,7 +12,7 @@ use std::{
     str::Chars,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Source {
     file: Rc<PathBuf>,
     line: usize,

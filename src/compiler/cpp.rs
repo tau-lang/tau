@@ -160,11 +160,19 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
 
     fn visit_struct(&mut self, structure: &Structure) -> CppSourceCode {
         let name = CppSourceCode::from(&structure.name);
-        let fields = visit_vec(
-            &structure.fields,
-            |x| format!("  {};", CppSourceCode::from(x)),
-            "\n",
-        );
+        let fields = structure
+            .fields
+            .iter()
+            .map(|pair| {
+                let (param_name, param_type) = pair;
+                format!(
+                    "{} {};",
+                    CppSourceCode::from(param_type),
+                    CppSourceCode::from(param_name)
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
         format!("class {name} {{\npublic:\n{fields}}};").into()
     }
 

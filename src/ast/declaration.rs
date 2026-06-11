@@ -2,10 +2,11 @@ use crate::{
     ast::{expression::Expr, identifier::Identifier, statement::Stmt},
     typing::TypeCell,
 };
+use std::collections::HashMap;
 
 pub struct Structure {
     pub name: Identifier,
-    pub fields: Vec<(Identifier, TypeCell)>,
+    pub fields: HashMap<Identifier, TypeCell>,
 }
 
 /// Modifiers are attributes of a element that change it's behavior. They are

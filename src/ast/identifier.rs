@@ -1,7 +1,7 @@
 use crate::lexer::Source;
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Identifier {
     name: String,
     source: Source,
