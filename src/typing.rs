@@ -199,6 +199,12 @@ macro_rules! number {
     }};
 }
 
+/// A type tree is a namespace that contains names that are associated with a
+/// type. For example, a module may contain a struct and an enum. Each tree must
+/// at least be a type contain children that are types. There is no limit to how
+/// many trees can be nested in each other. We use type trees for handling the
+/// `::` access of types
+#[derive(Debug)]
 pub struct TypeTree {
     childs: HashMap<String, TypeTree>,
     value: Option<Rc<TypeDef>>,

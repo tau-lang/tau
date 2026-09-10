@@ -582,18 +582,22 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
 
     fn visit_const(
         &mut self,
-        _: &'a Identifier,
+        var_name: &'a Identifier,
         var_type: &'a TypeCell,
         initializer: &'a Expr,
     ) -> Self::Output {
-        let ref_type = self.types.lookup_type(&var_type.borrow().clone())?;
-        if !(ref_type.clone() == self.visit_expr(initializer).unwrap()) {
+        let expected = self.types.lookup_type(&var_type.borrow().clone())?;
+        let actual = self.visit_expr(initializer).unwrap();
+        if !actual.is_castable_to(&expected) {
             Err(Error::new(vec![Diagnostic::new(
-                "const does not have the declared type".to_string(),
-                initializer.source(),
+                format!(
+                    "const '{}' has the type {}, but was declared as {}",
+                    var_name, actual, expected
+                ),
+                Source::union(&var_name.source(), &initializer.source()),
             )]))?;
         }
-        *var_type.borrow_mut() = ref_type;
+        *var_type.borrow_mut() = actual;
         Ok(())
     }
 }

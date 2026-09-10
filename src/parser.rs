@@ -137,7 +137,7 @@ impl Parser {
         };
 
         let body = if modifiers.is_extern {
-            Vec::new()
+            Default::default()
         } else {
             self.decl_body()?
         };

@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    env,
     path::{Path, PathBuf},
     process::exit,
     rc::Rc,
@@ -34,6 +33,7 @@ pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
   -h, --help        display this help message
 "#;
 
+// TODO: maybe use https://doc.rust-lang.org/std/sync/struct.OnceLock.html
 #[derive(Default)]
 pub struct Args {
     input: HashSet<Rc<PathBuf>>,
@@ -67,8 +67,7 @@ impl ArgsBuilder {
         }
     }
 
-    pub fn parse(mut self) -> Result<Self, String> {
-        let args: Vec<String> = env::args().collect();
+    pub fn parse(mut self, args: Vec<String>) -> Result<Self, String> {
         let mut iter = args.into_iter();
         iter.next()
             .expect("expect program exists ($0) as first command line argument");

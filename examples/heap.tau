@@ -6,14 +6,16 @@ struct Node {
 struct List {
   head: *Node,
   tail: *Node,
-  size: u64
+  len: u64
 }
 
-extern fn malloc(size: u64) -> *any
+extern fn malloc(len: u64) -> *any
 
 extern fn free(ptr: *any)
 
 extern fn puts(text: str)
+
+extern fn f2str(num: f64) -> str
 
 fn node(next: *Node, value: f64) -> *Node {
   let new: *Node = malloc(16);
@@ -22,29 +24,36 @@ fn node(next: *Node, value: f64) -> *Node {
   return new;
 }
 
-fn push(list: List, e: f64) {
-  let new = node(list.head, e);
-  list.head = new;
-  list.size += 1;
+fn push(list: *List, e: f64) {
+  let new = node(*list.head, e);
+  *list.head = new;
+  *list.len += 1;
 }
 
-fn pop(list: List) -> f64 {
-  let cur = list.head;
+fn pop(list: *List) -> f64 {
+  let cur = *list.head;
   let val = peek(list);
-  list.head = *(list.head).next;
+  *list.head = *(*list.head).next;
   free(cur);
   return val;
 }
 
-fn peek(list: List) -> f64 =
-  *(list.head).value
+fn peek(list: *List) -> f64 =
+  *(*list.head).value
 
 fn main() {
   let empty: *Node = malloc(0);
 
-  let list = List { head=empty, tail=empty, size=100 };
-  push(list, 1);
-  push(list, 2);
+  let list = List { head=empty, tail=empty, len=0 };
+  let i = 0;
+  while i < 16 {
+    push(&list, i);
+    i += 1;
+  }
+  while i > 0 {
+    puts(f2str(pop(&list)));
+    i -= 1
+  }
 
   puts("this is a placeholder");
 }

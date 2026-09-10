@@ -11,7 +11,7 @@ use crate::{
     parser::Parser,
     resolution::Resolution,
 };
-use std::{fs, path::PathBuf, process::exit, rc::Rc};
+use std::{env, fs, path::PathBuf, process::exit, rc::Rc};
 
 mod ast;
 mod cli;
@@ -24,7 +24,10 @@ mod resolution;
 mod typing;
 
 fn main() -> error::Result<()> {
-    let args = ArgsBuilder::new().parse().unwrap().build();
+    let args = ArgsBuilder::new()
+        .parse(env::args().collect())
+        .unwrap()
+        .build();
     if args.input().is_empty() {
         println!("{}", HELP_MESSAGE)
     } else {
@@ -63,55 +66,33 @@ fn compile_file(filename: &Rc<PathBuf>, args: &cli::Args) -> error::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        ast::statement::StmtVisitor, header::Header, lexer::Lexer, parser::Parser,
-        resolution::Resolution,
-    };
-    use std::fs;
-    use std::path::PathBuf;
-    use std::rc::Rc;
+    use super::compile_file;
+    use crate::{cli::ArgsBuilder, error, lexer::Lexer, parser::Parser};
+    use std::{path::PathBuf, rc::Rc};
 
     #[test]
-    fn lexer() {
-        let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
-        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        println!("{:?}", lexer.scan());
+    fn pipeline_arrays() -> error::Result<()> {
+        let args = ArgsBuilder::new().build();
+        compile_file(&Rc::new(PathBuf::from("examples/arrays.tau")), &args)
     }
 
     #[test]
-    fn parse_expr() {
-        let content = "(1+a[0]) * hypo(3, 4)";
+    fn pipeline_heap() -> error::Result<()> {
+        let args = ArgsBuilder::new().build();
+        compile_file(&Rc::new(PathBuf::from("examples/heap.tau")), &args)
+    }
+
+    #[test]
+    fn pipeline_vec2() -> error::Result<()> {
+        let args = ArgsBuilder::new().build();
+        compile_file(&Rc::new(PathBuf::from("examples/vec2.tau")), &args)
+    }
+
+    #[test]
+    fn infinite_scoping() -> error::Result<()> {
+        let content = "{ { { { { { {} } } } } } }";
         let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
         let mut parser = Parser::new(lexer.scan().unwrap());
-        println!("{:?}", parser.expr());
-    }
-
-    #[test]
-    fn parse_stmt() {
-        let content = "{ let a = 1 if (a < 2) break }";
-        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let mut parser = Parser::new(lexer.scan().unwrap());
-        println!("{:?}", parser.stmt());
-    }
-
-    #[test]
-    fn header_file() {
-        let content = fs::read_to_string("examples/vec2.tau").expect("Expected to open file");
-        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let parser = Parser::new(lexer.scan().unwrap());
-        let ast = parser.parse().unwrap();
-        let header = Header::new();
-        println!("{:?}", header.headers(&ast).analysed());
-    }
-
-    #[test]
-    fn resolve_stmt() {
-        let content = "{ let a = 2 if (a < 2) break }";
-        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let mut parser = Parser::new(lexer.scan().unwrap());
-        let ast = parser.stmt().unwrap();
-        let (types, fields) = Header::new().analysed();
-        let mut resolution = Resolution::new(&types, fields);
-        println!("{:#?}", resolution.visit_stmt(&ast));
+        parser.stmt().map(|_| {})
     }
 }
