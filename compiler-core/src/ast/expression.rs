@@ -1,83 +1,107 @@
 use crate::{
-    ast::{identifier::Identifier, statement::Stmt},
+    ast::{
+        Location, Typed, TypedExpr, UntypedExpr, UntypedStmt, identifier::Identifier,
+        statement::Stmt,
+    },
     lexer::{Source, Token},
-    typing::TypeCell,
 };
-use std::rc::Rc;
+use std::boxed::Box;
 
 #[derive(Debug)]
-pub struct Expr {
-    kind: ExprKind,
+pub struct Expr<T> {
+    kind: ExprKind<T>,
     source: Source,
+    type_: T,
+}
+
+impl<T> Expr<T> {
+    pub fn kind(&self) -> &ExprKind<T> {
+        &self.kind
+    }
+
+    pub fn type_(&self) -> &T {
+        &self.type_
+    }
+}
+
+impl UntypedExpr {
+    pub fn new(kind: ExprKind<()>, source: Source) -> Self {
+        Self {
+            kind,
+            source,
+            type_: (),
+        }
+    }
+}
+
+impl TypedExpr {
+    pub fn new(kind: ExprKind<Typed>, source: Source, type_: Typed) -> Self {
+        Self {
+            kind,
+            source,
+            type_,
+        }
+    }
+}
+
+impl<T> Location for Expr<T> {
+    fn source(&self) -> &Source {
+        &self.source
+    }
 }
 
 #[derive(Debug)]
-pub enum ExprKind {
+pub enum ExprKind<T> {
     Unary {
         // -right
         operator: Token,
-        right: Rc<Expr>,
+        right: Box<Expr<T>>,
     },
     Binary {
         // left + right
-        left: Rc<Expr>,
+        left: Box<Expr<T>>,
         operator: Token,
-        right: Rc<Expr>,
+        right: Box<Expr<T>>,
     },
     Get {
-        left: Rc<Expr>,
+        // left.right
+        left: Box<Expr<T>>,
         right: Identifier,
-        lookup: TypeCell,
     },
     Index {
         // object[index]
-        object: Rc<Expr>,
-        index: Rc<Expr>,
-        lookup: TypeCell,
+        object: Box<Expr<T>>,
+        index: Box<Expr<T>>,
     },
     Call {
         // callee(..arguments)
-        callee: Rc<Expr>,
-        arguments: Vec<Rc<Expr>>,
+        callee: Box<Expr<T>>,
+        arguments: Vec<Expr<T>>,
     },
     CreateArray {
-        array_type: TypeCell,
-        array_size: Option<Rc<Expr>>,
-        fields: Vec<Rc<Expr>>,
+        name: Identifier,
+        size: Option<Box<Expr<T>>>,
+        fields: Vec<Expr<T>>,
     },
     CreateStruct {
-        struct_type: TypeCell,
-        fields: Vec<(Identifier, Rc<Expr>)>,
+        name: Identifier,
+        fields: Vec<(Identifier, Expr<T>)>,
     },
     If {
-        condition: Rc<Expr>,
-        if_branch: Rc<Stmt>,
-        else_branch: Option<Rc<Stmt>>,
-        expression_type: TypeCell,
+        condition: Box<Expr<T>>,
+        if_branch: Box<Stmt<T>>,
+        else_branch: Option<Box<Stmt<T>>>,
     },
     Literal(Token),
     Variable {
         name: Identifier,
-        variable_type: TypeCell,
     },
 }
 
-impl Expr {
-    pub fn new(source: Source, kind: ExprKind) -> Self {
-        Self { kind, source }
-    }
-    pub fn source(&self) -> &Source {
-        &self.source
-    }
-    pub fn kind(&self) -> &ExprKind {
-        &self.kind
-    }
-}
-
-pub trait ExprVisitor<'a> {
+pub trait UntypedExprVisitor<'a> {
     type Output;
 
-    fn visit_expr(&mut self, expr: &'a Expr) -> Self::Output {
+    fn visit_expr(&mut self, expr: &'a UntypedExpr) -> Self::Output {
         match expr.kind() {
             ExprKind::Unary { operator, right } => self.visit_unary(operator, right),
             ExprKind::Binary {
@@ -85,87 +109,164 @@ pub trait ExprVisitor<'a> {
                 operator,
                 right,
             } => self.visit_binary(left, operator, right),
-            ExprKind::Get {
-                left,
-                right,
-                lookup,
-            } => self.visit_get(left, right, lookup),
-            ExprKind::Index {
-                object,
-                index,
-                lookup,
-            } => self.visit_index(object, index, lookup),
+            ExprKind::Get { left, right } => self.visit_get(left, right),
+            ExprKind::Index { object, index } => self.visit_index(object, index),
             ExprKind::Call { callee, arguments } => self.visit_call(callee, arguments),
-            ExprKind::CreateArray {
-                array_type,
-                array_size,
-                fields,
-            } => self.visit_create_array(array_type, array_size, fields),
-            ExprKind::CreateStruct {
-                struct_type,
-                fields,
-            } => self.visit_create_struct(struct_type, fields),
+            ExprKind::CreateArray { name, size, fields } => {
+                self.visit_create_array(name, size, fields)
+            }
+            ExprKind::CreateStruct { name, fields } => self.visit_create_struct(name, fields),
             ExprKind::If {
                 condition,
                 if_branch,
                 else_branch,
-                expression_type,
-            } => self.visit_if(condition, if_branch, else_branch, expression_type),
+            } => self.visit_if(condition, if_branch, else_branch),
             ExprKind::Literal(value) => self.visit_literal(value),
-            ExprKind::Variable {
-                name,
-                variable_type,
-            } => self.visit_variable(name, variable_type),
+            ExprKind::Variable { name } => self.visit_variable(name),
         }
     }
 
-    fn visit_unary(&mut self, operator: &'a Token, right: &'a Rc<Expr>) -> Self::Output;
+    fn visit_unary(&mut self, operator: &'a Token, right: &'a Box<UntypedExpr>) -> Self::Output;
 
     fn visit_binary(
         &mut self,
-        left: &'a Rc<Expr>,
+        left: &'a Box<UntypedExpr>,
         operator: &'a Token,
-        right: &'a Rc<Expr>,
+        right: &'a Box<UntypedExpr>,
     ) -> Self::Output;
 
-    fn visit_get(
-        &mut self,
-        left: &'a Rc<Expr>,
-        right: &'a Identifier,
-        lookup: &'a TypeCell,
-    ) -> Self::Output;
+    fn visit_get(&mut self, left: &'a Box<UntypedExpr>, right: &'a Identifier) -> Self::Output;
 
     fn visit_index(
         &mut self,
-        object: &'a Rc<Expr>,
-        index: &'a Rc<Expr>,
-        lookup: &'a TypeCell,
+        object: &'a Box<UntypedExpr>,
+        index: &'a Box<UntypedExpr>,
     ) -> Self::Output;
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> Self::Output;
+    fn visit_call(
+        &mut self,
+        callee: &'a Box<UntypedExpr>,
+        arguments: &'a [UntypedExpr],
+    ) -> Self::Output;
 
     fn visit_create_array(
         &mut self,
-        array_type: &'a TypeCell,
-        array_size: &'a Option<Rc<Expr>>,
-        fields: &'a [Rc<Expr>],
+        name: &'a Identifier,
+        size: &'a Option<Box<UntypedExpr>>,
+        fields: &'a [UntypedExpr],
     ) -> Self::Output;
 
     fn visit_create_struct(
         &mut self,
-        struct_name: &'a TypeCell,
-        fields: &'a [(Identifier, Rc<Expr>)],
+        name: &'a Identifier,
+        fields: &'a [(Identifier, UntypedExpr)],
     ) -> Self::Output;
 
     fn visit_if(
         &mut self,
-        condition: &'a Rc<Expr>,
-        if_branch: &'a Rc<Stmt>,
-        else_branch: &'a Option<Rc<Stmt>>,
-        expression_result: &'a TypeCell,
+        condition: &'a Box<UntypedExpr>,
+        if_branch: &'a Box<UntypedStmt>,
+        else_branch: &'a Option<Box<UntypedStmt>>,
     ) -> Self::Output;
 
     fn visit_literal(&mut self, value: &'a Token) -> Self::Output;
 
-    fn visit_variable(&mut self, name: &'a Identifier, var_type: &'a TypeCell) -> Self::Output;
+    fn visit_variable(&mut self, name: &'a Identifier) -> Self::Output;
+}
+
+pub trait TypedExprVisitor<'a> {
+    type Type;
+    type Output;
+
+    fn visit_expr(&mut self, expr: &'a Expr<Self::Type>) -> Self::Output {
+        match expr.kind() {
+            ExprKind::Unary { operator, right } => self.visit_unary(operator, right, expr.type_()),
+            ExprKind::Binary {
+                left,
+                operator,
+                right,
+            } => self.visit_binary(left, operator, right, expr.type_()),
+            ExprKind::Get { left, right } => self.visit_get(left, right, expr.type_()),
+            ExprKind::Index { object, index } => self.visit_index(object, index, expr.type_()),
+            ExprKind::Call { callee, arguments } => {
+                self.visit_call(callee, arguments, expr.type_())
+            }
+            ExprKind::CreateArray { name, size, fields } => {
+                self.visit_create_array(name, size, fields, expr.type_())
+            }
+            ExprKind::CreateStruct { name, fields } => {
+                self.visit_create_struct(name, fields, expr.type_())
+            }
+            ExprKind::If {
+                condition,
+                if_branch,
+                else_branch,
+            } => self.visit_if(condition, if_branch, else_branch, expr.type_()),
+            ExprKind::Literal(value) => self.visit_literal(value, expr.type_()),
+            ExprKind::Variable { name } => self.visit_variable(name, expr.type_()),
+        }
+    }
+
+    fn visit_unary(
+        &mut self,
+        operator: &'a Token,
+        right: &'a Box<Expr<Self::Type>>,
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_binary(
+        &mut self,
+        left: &'a Box<Expr<Self::Type>>,
+        operator: &'a Token,
+        right: &'a Box<Expr<Self::Type>>,
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_get(
+        &mut self,
+        left: &'a Box<Expr<Self::Type>>,
+        right: &'a Identifier,
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_index(
+        &mut self,
+        object: &'a Box<Expr<Self::Type>>,
+        index: &'a Box<Expr<Self::Type>>,
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_call(
+        &mut self,
+        callee: &'a Box<Expr<Self::Type>>,
+        arguments: &'a [Expr<Self::Type>],
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_create_array(
+        &mut self,
+        name: &'a Identifier,
+        size: &'a Option<Box<Expr<Self::Type>>>,
+        fields: &'a [Expr<Self::Type>],
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_create_struct(
+        &mut self,
+        name: &'a Identifier,
+        fields: &'a [(Identifier, Expr<Self::Type>)],
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_if(
+        &mut self,
+        condition: &'a Box<Expr<Self::Type>>,
+        if_branch: &'a Box<Stmt<Self::Type>>,
+        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        type_: &'a Self::Type,
+    ) -> Self::Output;
+
+    fn visit_literal(&mut self, value: &'a Token, type_: &'a Self::Type) -> Self::Output;
+
+    fn visit_variable(&mut self, name: &'a Identifier, type_: &'a Self::Type) -> Self::Output;
 }

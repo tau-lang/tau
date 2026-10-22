@@ -2,19 +2,24 @@ use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        declaration::{Decl, DeclVisitor, Function, Structure},
+        Untyped,
+        declaration::{Decl, DeclFunc, DeclStruct, DeclVisitor},
         expression::Expr,
         identifier::Identifier,
     },
     error,
     generator::Generator,
-    typing::TypeCell,
+    lexer::Source,
 };
 
 pub struct CHeaderGenerator;
 
 impl<'a> Generator<'a> for CHeaderGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> error::Result<()> {
+    fn generate(
+        &mut self,
+        ast: &'a [Decl<Untyped>],
+        output: &std::path::Path,
+    ) -> error::Result<()> {
         let mut file = File::create(output).expect("error reading file");
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
@@ -39,8 +44,11 @@ impl<'a> Generator<'a> for CHeaderGenerator {
 }
 
 impl DeclVisitor<'_> for CHeaderGenerator {
+    // TODO: switch to typed
+    type Type = Untyped;
     type Output = CSourceCode;
-    fn visit_import(&mut self, path: &[Identifier]) -> CSourceCode {
+
+    fn visit_import(&mut self, path: &[Identifier], _: &Source) -> CSourceCode {
         let path = path
             .iter()
             .map(|x| format!("{x}"))
@@ -49,7 +57,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         CSourceCode::from(format!("#include <{path}.hpp>"))
     }
 
-    fn visit_struct(&mut self, structure: &Structure) -> CSourceCode {
+    fn visit_struct(&mut self, structure: &DeclStruct, _: &Source) -> CSourceCode {
         let name = CSourceCode::from(&structure.name);
         let fields = structure
             .fields
@@ -67,7 +75,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         format!("typedef struct {name} {{\n{fields}\n}} {name};").into()
     }
 
-    fn visit_function(&mut self, function: &Function) -> CSourceCode {
+    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: &Source) -> CSourceCode {
         let name = CSourceCode::from(&function.name);
         let extern_ = if function.modifiers.is_extern {
             "extern "
@@ -83,7 +91,13 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         CSourceCode::from(format!("{extern_}{return_type} {name}({params});"))
     }
 
-    fn visit_const(&mut self, var_name: &Identifier, var_type: &TypeCell, _: &Expr) -> CSourceCode {
+    fn visit_const(
+        &mut self,
+        var_name: &Identifier,
+        var_type: &TypeCell,
+        _: &Expr<Self::Type>,
+        _: &Source,
+    ) -> CSourceCode {
         let var_name = CSourceCode::from(var_name);
         let var_type = CSourceCode::from(var_type.borrow().as_ref());
         format!("extern {var_type} {var_name};").into()

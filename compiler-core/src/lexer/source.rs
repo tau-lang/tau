@@ -17,10 +17,10 @@ impl Source {
         Source { file_id, range }
     }
 
-    pub fn union(left: &Source, right: &Source) -> Source {
+    pub fn merge(&self, with: &Source) -> Source {
         Source {
-            file_id: left.file_id,
-            range: left.range.start..right.range.end,
+            file_id: self.file_id,
+            range: self.range.start..with.range.end,
         }
     }
 
@@ -46,7 +46,7 @@ impl TryFrom<&Vec<Identifier>> for Source {
         if value.is_empty() {
             return error(Diagnostic::error().with_message("expected that type path is not empty"));
         }
-        Ok(Source::union(
+        Ok(Source::merge(
             value
                 .first()
                 .expect("expect first identifier exists")

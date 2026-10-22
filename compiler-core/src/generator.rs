@@ -1,4 +1,4 @@
-use crate::{ast::declaration::Decl, error::Error};
+use crate::{ast::UntypedDecl, error::Error};
 use std::path::{Path, PathBuf};
 
 pub fn set_output(path: &Path, folder: &Path, extension: &str) -> PathBuf {
@@ -14,15 +14,15 @@ pub fn set_output(path: &Path, folder: &Path, extension: &str) -> PathBuf {
 }
 
 pub trait Generator<'a> {
-    fn generate(&mut self, ast: &'a [Decl], output: &Path) -> Result<(), Error>;
+    fn generate(&mut self, ast: &'a [UntypedDecl], output: &Path) -> Result<(), Error>;
 }
 
 pub struct Compiler<'a> {
-    ast: &'a [Decl],
+    ast: &'a [UntypedDecl],
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(ast: &'a [Decl]) -> Compiler<'a> {
+    pub fn new(ast: &'a [UntypedDecl]) -> Compiler<'a> {
         Compiler { ast }
     }
 

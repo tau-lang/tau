@@ -1,12 +1,12 @@
 use crate::{
-    ast::{expression::Expr, identifier::Identifier, statement::Stmt},
-    typing::TypeCell,
+    ast::{Location, Typed, expression::Expr, identifier::Identifier, statement::Stmt},
+    lexer::Source,
 };
-use std::collections::HashMap;
 
-pub struct Structure {
+#[derive(Debug)]
+pub struct DeclStruct {
     pub name: Identifier,
-    pub fields: HashMap<Identifier, TypeCell>,
+    pub fields: Vec<(Identifier, Typed)>,
 }
 
 /// Modifiers are attributes of a element that change it's behavior. They are
@@ -14,8 +14,8 @@ pub struct Structure {
 /// additional functionality to it. Currently only the extern and io modifier
 /// exists. The structure contains a list of modifiers and if they are enabled
 /// or not.
-#[derive(Default)]
-pub struct Modifiers {
+#[derive(Debug, Default)]
+pub struct FuncModifiers {
     pub is_extern: bool,
     pub is_io: bool,
 }
@@ -25,54 +25,84 @@ pub struct Modifiers {
 /// expression that is returned. A return statement is indicated by the
 /// keyword return followed by any expression, possible empty. All occurences
 /// of a return must return the same type.
-pub struct Function {
+#[derive(Debug)]
+pub struct DeclFunc<T> {
     pub name: Identifier,
-    pub return_type: TypeCell,
-    pub params: Vec<(Identifier, TypeCell)>,
-    pub body: Vec<Stmt>,
-    pub modifiers: Modifiers,
+    pub return_type: Typed,
+    pub params: Vec<(Identifier, Typed)>,
+    pub body: Vec<Stmt<T>>,
+    pub modifiers: FuncModifiers,
 }
 
 /// A declaration (short decl) denotes a new definition of an element inside
-/// a tau file. Every declaration is either a import, struct, function or
-/// constant.
-pub enum Decl {
+/// a tau file.
+#[derive(Debug)]
+pub struct Decl<T> {
+    kind: DeclKind<T>,
+    source: Source,
+}
+
+impl<T> Decl<T> {
+    pub fn new(kind: DeclKind<T>, source: Source) -> Decl<T> {
+        Decl { kind, source }
+    }
+
+    pub fn kind(&self) -> &DeclKind<T> {
+        &self.kind
+    }
+}
+
+impl<T> Location for Decl<T> {
+    fn source(&self) -> &Source {
+        &self.source
+    }
+}
+
+/// Every declaration is either a import, struct, function or constant.
+#[derive(Debug)]
+pub enum DeclKind<T> {
     Import(Vec<Identifier>),
-    Struct(Structure),
-    Function(Function),
+    Struct(DeclStruct),
+    Func(DeclFunc<T>),
     Const {
         name: Identifier,
-        var_type: TypeCell,
-        initializer: Expr,
+        type_: Typed,
+        initializer: Expr<T>,
     },
 }
 
 pub trait DeclVisitor<'a> {
+    type Type;
     type Output;
 
-    fn visit_decl(&mut self, decl: &'a Decl) -> Self::Output {
-        match decl {
-            Decl::Import(name) => self.visit_import(name),
-            Decl::Struct(structure) => self.visit_struct(structure),
-            Decl::Function(function) => self.visit_function(function),
-            Decl::Const {
+    fn visit_decl(&mut self, decl: &'a Decl<Self::Type>) -> Self::Output {
+        match decl.kind() {
+            DeclKind::Import(name) => self.visit_import(name, decl.source()),
+            DeclKind::Struct(structure) => self.visit_struct(structure, decl.source()),
+            DeclKind::Func(function) => self.visit_function(function, decl.source()),
+            DeclKind::Const {
                 name,
-                var_type,
+                type_,
                 initializer,
-            } => self.visit_const(name, var_type, initializer),
+            } => self.visit_const(name, type_, initializer, decl.source()),
         }
     }
 
-    fn visit_import(&mut self, path: &'a [Identifier]) -> Self::Output;
+    fn visit_import(&mut self, path: &'a [Identifier], source: &'a Source) -> Self::Output;
 
-    fn visit_struct(&mut self, structure: &'a Structure) -> Self::Output;
+    fn visit_struct(&mut self, struct_: &'a DeclStruct, source: &'a Source) -> Self::Output;
 
-    fn visit_function(&mut self, function: &'a Function) -> Self::Output;
+    fn visit_function(
+        &mut self,
+        func: &'a DeclFunc<Self::Type>,
+        source: &'a Source,
+    ) -> Self::Output;
 
     fn visit_const(
         &mut self,
         name: &'a Identifier,
-        var_type: &'a TypeCell,
-        initializer: &'a Expr,
+        type_: &'a Typed,
+        initializer: &'a Expr<Self::Type>,
+        source: &'a Source,
     ) -> Self::Output;
 }

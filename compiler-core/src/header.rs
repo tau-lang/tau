@@ -1,46 +1,54 @@
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor, Function, Structure},
+        Typed, UntypedDecl,
+        declaration::{DeclFunc, DeclStruct, DeclVisitor},
         expression::Expr,
         identifier::Identifier,
     },
     error::{FileDb, Result},
+    lexer::Source,
     process_file,
-    typing::{self, TypeCell, TypeDef, TypeNames, TypeTree},
+    type_::Type,
 };
-use codespan_reporting::term;
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
+use codespan_reporting::term::{
+    self,
+    termcolor::{ColorChoice, StandardStream},
+};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+use symbol_table::GlobalSymbol;
+
+pub type TypeMap = HashMap<GlobalSymbol, Typed>;
 
 pub struct Header {
-    types: TypeTree,
-    scope: TypeNames,
+    types: TypeMap,
+    scope: TypeMap,
 }
 
 impl Header {
     pub fn new() -> Header {
         Header {
-            types: TypeTree::new(),
-            scope: HashMap::new(),
+            types: TypeMap::new(),
+            scope: TypeMap::new(),
         }
     }
 
-    pub fn headers(mut self, declarations: &[Decl]) -> Result<Header> {
+    pub fn headers(mut self, declarations: &[UntypedDecl]) -> Result<Header> {
         for declaration in declarations {
             self.visit_decl(declaration)?;
         }
         Ok(self)
     }
 
-    pub fn analysed(self) -> (TypeTree, TypeNames) {
+    pub fn analysed(self) -> (TypeMap, TypeMap) {
         (self.types, self.scope)
     }
 }
 
 impl<'a> DeclVisitor<'a> for Header {
+    type Type = ();
     type Output = Result<()>;
 
-    fn visit_import(&mut self, path: &[Identifier]) -> Self::Output {
+    fn visit_import(&mut self, path: &[Identifier], _: &Source) -> Self::Output {
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
@@ -54,11 +62,12 @@ impl<'a> DeclVisitor<'a> for Header {
         let display = filename.display();
         let file_id = files.add(&display, &content);
         match process_file(file_id, &content) {
-            Ok((_, types, scope)) => {
-                self.types.insert_tree(
+            Ok((_, _, scope)) => {
+                // TODO: insert module
+                /*self.types.insert(
                     path.last().expect("import path not empty").to_string(),
                     types,
-                );
+                );*/
                 self.scope.extend(scope);
             }
             Err(error) => {
@@ -74,38 +83,34 @@ impl<'a> DeclVisitor<'a> for Header {
         Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a Structure) -> Self::Output {
-        let struct_name = structure.name.name().to_string();
+    fn visit_struct(&mut self, structure: &'a DeclStruct, _: &Source) -> Self::Output {
+        let struct_name = GlobalSymbol::from(structure.name.name());
 
-        let mut fields = HashMap::new();
+        let mut fields = Vec::new();
         for (field_name, field_type) in &structure.fields {
-            fields.insert(field_name.name().to_string(), field_type.borrow().clone());
+            fields.push((field_name.name().to_string(), field_type.clone()));
         }
-        self.types.insert_type(
+        self.types.insert(
             struct_name,
-            Rc::new(TypeDef::Struct(typing::Struct {
-                name: vec![structure.name.clone()],
-                fields,
-            })),
+            Arc::new(Type::Named {
+                name: GlobalSymbol::from(structure.name.name()),
+                arguments: vec![],
+            }),
         );
         Ok(())
     }
 
-    fn visit_function(&mut self, func: &'a Function) -> Self::Output {
-        let mut parameters = Vec::new();
-        for (_, param_type) in &func.params {
-            parameters.push(param_type.borrow().clone());
+    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: &Source) -> Self::Output {
+        let mut arguments = Vec::new();
+        for (_, type_) in &func.params {
+            arguments.push(type_.clone());
         }
-        self.scope.insert(
-            func.name.name().to_string(),
-            Rc::new(TypeDef::Function(typing::Function {
-                name: vec![
-                    // TODO: add full module path
-                    func.name.clone(),
-                ],
-                parameters,
-                return_type: func.return_type.borrow().clone(),
-            })),
+        self.types.insert(
+            GlobalSymbol::from(func.name.name()),
+            Arc::new(Type::Fn {
+                arguments,
+                return_: func.return_type.clone(),
+            }),
         );
         Ok(())
     }
@@ -113,11 +118,12 @@ impl<'a> DeclVisitor<'a> for Header {
     fn visit_const(
         &mut self,
         name: &'a Identifier,
-        var_type: &'a TypeCell,
-        _: &Expr,
+        type_: &'a Typed,
+        _: &Expr<Self::Type>,
+        _: &Source,
     ) -> Self::Output {
         self.scope
-            .insert(name.name().to_string(), var_type.borrow().clone());
+            .insert(GlobalSymbol::from(name.name()), type_.clone());
         Ok(())
     }
 }

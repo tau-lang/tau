@@ -1,7 +1,9 @@
+/*
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor, Function, Structure},
-        expression::{Expr, ExprVisitor},
+        Location, Typed,
+        declaration::{Decl, DeclFunc, DeclStruct, DeclVisitor},
+        expression::{Expr, UntypedExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
     },
@@ -9,25 +11,25 @@ use crate::{
     lexer::{Source, Token, TokenType},
     typing::{TypeCell, TypeDef, TypeNames, TypeTree},
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{boxed::Box, cell::RefCell, collections::HashMap};
 
 pub struct Resolution<'a> {
     types: &'a TypeTree,
     // Current scope is the list of the scope we are currently in and all scopes above it.
-    scopes: Vec<Rc<RefCell<TypeNames>>>,
-    return_type: Option<Rc<TypeDef>>,
+    scopes: Vec<Box<RefCell<TypeNames>>>,
+    return_type: Option<Box<TypeDef>>,
 }
 
 impl<'a> Resolution<'a> {
     pub fn new(types: &'a TypeTree, fields: TypeNames) -> Resolution<'a> {
         Resolution {
             types,
-            scopes: vec![Rc::new(RefCell::new(fields))],
+            scopes: vec![Box::new(RefCell::new(fields))],
             return_type: None,
         }
     }
 
-    pub fn resolve(mut self, declarations: &'a Vec<Decl>) -> Result<TypeNames> {
+    pub fn resolve(mut self, declarations: &'a Vec<Decl<()>>) -> Result<TypeNames> {
         for decl in declarations {
             self.visit_decl(decl)?;
         }
@@ -38,7 +40,7 @@ impl<'a> Resolution<'a> {
             .take())
     }
 
-    fn declare_variable(&mut self, var_name: &Identifier, var_type: Rc<TypeDef>) -> Result<()> {
+    fn declare_variable(&mut self, var_name: &Identifier, var_type: Box<TypeDef>) -> Result<()> {
         if (*self
             .scopes
             .last_mut()
@@ -55,7 +57,7 @@ impl<'a> Resolution<'a> {
         Ok(())
     }
 
-    fn lookup_variable(&mut self, var_name: &Identifier) -> Result<Rc<TypeDef>> {
+    fn lookup_variable(&mut self, var_name: &Identifier) -> Result<Box<TypeDef>> {
         if let Some(scope) = self.scopes.last() {
             if let Some(v) = scope.borrow().get(var_name.name()) {
                 Ok(v.clone())
@@ -73,7 +75,7 @@ impl<'a> Resolution<'a> {
         }
     }
 
-    fn member(&self, lookup: Rc<TypeDef>, member_name: &'a Identifier) -> Result<Rc<TypeDef>> {
+    fn member(&self, lookup: Box<TypeDef>, member_name: &'a Identifier) -> Result<Box<TypeDef>> {
         if let TypeDef::Struct(structure) = lookup.as_ref() {
             if let Some(ref_type) = structure.fields.get(member_name.name()) {
                 self.types.lookup_type(&ref_type.clone())
@@ -92,7 +94,7 @@ impl<'a> Resolution<'a> {
     }
 
     fn begin_scope(&mut self) {
-        let ref_counter = Rc::new(RefCell::new(HashMap::new()));
+        let ref_counter = Box::new(RefCell::new(HashMap::new()));
         self.scopes.push(ref_counter);
     }
 
@@ -101,16 +103,17 @@ impl<'a> Resolution<'a> {
     }
 }
 
-impl<'a> ExprVisitor<'a> for Resolution<'a> {
-    type Output = Result<Rc<TypeDef>>;
+impl<'a> UntypedExprVisitor<'a> for Resolution<'a> {
+    type Type = ();
+    type Output = Result<Box<TypeDef>>;
 
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Self::Output {
+    fn visit_unary(&mut self, operator: &Token, right: &'a Box<Expr<Self::Type>>) -> Self::Output {
         let r = self.visit_expr(right)?;
         let throw_error = |msg: &str| {
             return error(
                 diagnostic(
                     msg.to_string(),
-                    &Source::union(&operator.source(), &right.source()),
+                    &Source::merge(&operator.source(), &right.source()),
                 )
                 .with_label(label(
                     format!("right hand side has type {}", r),
@@ -140,24 +143,24 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                     return throw_error("can only deref pointers");
                 }
             }
-            TokenType::Ref => Ok(Rc::new(TypeDef::RawPointer(r))),
+            TokenType::Ref => Ok(Box::new(TypeDef::RawPointer(r))),
             _ => unreachable!("{:?}", operator),
         }
     }
 
     fn visit_binary(
         &mut self,
-        left: &'a Rc<Expr>,
+        left: &'a Box<Expr<Self::Type>>,
         operator: &Token,
-        right: &'a Rc<Expr>,
-    ) -> Result<Rc<TypeDef>> {
+        right: &'a Box<Expr<Self::Type>>,
+    ) -> Result<Box<TypeDef>> {
         let l = self.visit_expr(left)?;
         let r = self.visit_expr(right)?;
         let throw_error = |msg: &str| {
             return error(
                 diagnostic(
                     msg.to_string(),
-                    &Source::union(&left.source(), &right.source()),
+                    &Source::merge(&left.source(), &right.source()),
                 )
                 .with_label(label(
                     format!("left hand side has type {}", l),
@@ -237,10 +240,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
     fn visit_get(
         &mut self,
-        left: &'a Rc<Expr>,
+        left: &'a Box<Expr<Self::Type>>,
         right: &'a Identifier,
         lookup: &'a TypeCell,
-    ) -> Result<Rc<TypeDef>> {
+    ) -> Result<Box<TypeDef>> {
         let l = self.visit_expr(left)?;
         *lookup.borrow_mut() = l.clone();
         self.member(l, right)
@@ -248,10 +251,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
     fn visit_index(
         &mut self,
-        object: &'a Rc<Expr>,
-        index: &'a Rc<Expr>,
+        object: &'a Box<Expr<Self::Type>>,
+        index: &'a Box<Expr<Self::Type>>,
         lookup: &'a TypeCell,
-    ) -> Result<Rc<TypeDef>> {
+    ) -> Result<Box<TypeDef>> {
         let l = self.visit_expr(object)?;
         let r = self.visit_expr(index)?;
         if let TypeDef::Array(array_type) = l.as_ref() {
@@ -259,7 +262,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 return error(
                     diagnostic(
                         "index has to be an integer".to_string(),
-                        &Source::union(object.source(), index.source()),
+                        &Source::merge(object.source(), index.source()),
                     )
                     .with_label(label(format!("object has type {}", l), object.source()))
                     .with_label(label(format!("index has type {}", r), index.source())),
@@ -282,9 +285,9 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
     fn visit_call(
         &mut self,
-        callee: &'a Rc<Expr>,
-        arguments: &'a [Rc<Expr>],
-    ) -> Result<Rc<TypeDef>> {
+        callee: &'a Box<Expr<Self::Type>>,
+        arguments: &'a [Box<Expr<Self::Type>>],
+    ) -> Result<Box<TypeDef>> {
         let callee_type = self.visit_expr(callee)?;
         if let TypeDef::Function(function) = &*callee_type {
             if arguments.len() != function.parameters.len() {
@@ -325,9 +328,9 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
     fn visit_create_array(
         &mut self,
         array_type: &'a TypeCell,
-        array_size: &'a Option<Rc<Expr>>,
-        fields: &'a [Rc<Expr>],
-    ) -> Result<Rc<TypeDef>> {
+        array_size: &'a Option<Box<Expr<Self::Type>>>,
+        fields: &'a [Box<Expr<Self::Type>>],
+    ) -> Result<Box<TypeDef>> {
         if let Some(size_expr) = array_size {
             if !self.visit_expr(size_expr)?.is_integer() {
                 return error(diagnostic(
@@ -348,14 +351,14 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             }
         }
 
-        Ok(Rc::new(TypeDef::Array(ref_type)))
+        Ok(Box::new(TypeDef::Array(ref_type)))
     }
 
     fn visit_create_struct(
         &mut self,
         struct_type: &'a TypeCell,
-        fields: &'a [(Identifier, Rc<Expr>)],
-    ) -> Result<Rc<TypeDef>> {
+        fields: &'a [(Identifier, Box<Expr<Self::Type>>)],
+    ) -> Result<Box<TypeDef>> {
         let ref_type = self.types.lookup_type(&struct_type.borrow().clone())?;
 
         for (field_name, field_expr) in fields {
@@ -376,18 +379,18 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
     fn visit_if(
         &mut self,
-        condition: &'a Rc<Expr>,
-        if_branch: &'a Rc<Stmt>,
-        else_branch: &'a Option<Rc<Stmt>>,
+        condition: &'a Box<Expr<Self::Type>>,
+        if_branch: &'a Box<Stmt<Self::Type>>,
+        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
         expression_type: &'a TypeCell,
-    ) -> Result<Rc<TypeDef>> {
+    ) -> Result<Box<TypeDef>> {
         // Check condition
         let c = self.visit_expr(condition)?;
         if !c.is_bool() {
             return error(
                 diagnostic(
                     "if condition must be a boolean",
-                    &Source::union(condition.source(), if_branch.source()),
+                    &Source::merge(condition.source(), if_branch.source()),
                 )
                 .with_label(label(
                     format!("condition has type {}", c),
@@ -411,7 +414,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
             return error(diagnostic(
                 "if expression expected else branch".to_string(),
-                &Source::union(&condition.source(), &if_branch.source()),
+                &Source::merge(&condition.source(), &if_branch.source()),
             ));
         };
 
@@ -430,7 +433,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             return error(
                 diagnostic(
                     format!("if expression has not the same type for if and else"),
-                    &Source::union(&condition.source(), &else_branch.source()),
+                    &Source::merge(&condition.source(), &else_branch.source()),
                 )
                 .with_label(label(
                     format!("if expression has type {}", if_type),
@@ -447,7 +450,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         Ok(result_type)
     }
 
-    fn visit_literal(&mut self, value: &Token) -> Result<Rc<TypeDef>> {
+    fn visit_literal(&mut self, value: &Token) -> Result<Box<TypeDef>> {
         Ok(self.types.lookup_name(match value.token_type() {
             TokenType::Number(_) => "i32",
             TokenType::String(_) => "str",
@@ -460,7 +463,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         &mut self,
         name: &Identifier,
         variable_type: &'a TypeCell,
-    ) -> Result<Rc<TypeDef>> {
+    ) -> Result<Box<TypeDef>> {
         let real_type = self.lookup_variable(name)?;
         *variable_type.borrow_mut() = real_type.clone();
         Ok(real_type)
@@ -468,9 +471,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 }
 
 impl<'a> StmtVisitor<'a> for Resolution<'a> {
-    type Output = Result<Option<Rc<TypeDef>>>;
+    type Type = ();
+    type Output = Result<Option<Box<TypeDef>>>;
 
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Self::Output {
+    fn visit_block(&mut self, statements: &'a [Box<Stmt<Self::Type>>]) -> Self::Output {
         let mut errors = Option::None;
         self.begin_scope();
         for stmt in statements {
@@ -495,7 +499,7 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         &mut self,
         name: &'a Identifier,
         var_type: &'a TypeCell,
-        initializer: &'a Expr,
+        initializer: &'a Expr<Self::Type>,
     ) -> Self::Output {
         let real_type = self.visit_expr(initializer)?;
         let expected_type = self.types.lookup_type(&*var_type.borrow())?;
@@ -514,7 +518,7 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         Ok(None)
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> Self::Output {
+    fn visit_return(&mut self, value: &'a Expr<Self::Type>) -> Self::Output {
         self.return_type = Some(self.visit_expr(value)?);
         Ok(None)
     }
@@ -523,7 +527,7 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         Ok(None)
     }
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output {
+    fn visit_while(&mut self, condition: &'a Expr<Self::Type>, body: &'a Box<Stmt<Self::Type>>) -> Self::Output {
         self.begin_scope();
         if !self.visit_expr(condition)?.is_bool() {
             return error(diagnostic(
@@ -536,19 +540,20 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         Ok(None)
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
+    fn visit_expr_stmt(&mut self, expr: &'a Expr<Self::Type>) -> Self::Output {
         Ok(Some(self.visit_expr(expr)?))
     }
 }
 
 impl<'a> DeclVisitor<'a> for Resolution<'a> {
+    type Type = ();
     type Output = Result<()>;
 
-    fn visit_import(&mut self, _: &[Identifier]) -> Self::Output {
+    fn visit_import(&mut self, _: &[Identifier], _: &Source) -> Self::Output {
         Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a Structure) -> Self::Output {
+    fn visit_struct(&mut self, structure: &'a DeclStruct, source: &'a Source) -> Self::Output {
         self.begin_scope();
         let struct_type = self
             .types
@@ -569,7 +574,7 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         Ok(())
     }
 
-    fn visit_function(&mut self, function: &'a Function) -> Self::Output {
+    fn visit_function(&mut self, function: &'a DeclFunc<Self::Type>, source: &'a Source) -> Self::Output {
         if self.return_type.is_some() {
             return error(diagnostic(
                 "return type already exists before body was defined".to_string(),
@@ -581,7 +586,8 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
             .lookup_type(&function.return_type.borrow().clone())?;
         *function.return_type.borrow_mut() = ref_type.clone();
 
-        // When a new body begins, first define all parameters as local variables.
+        // When a new body begins, first define all parameters as local
+        // variables.
         self.begin_scope();
         for (param_name, param_type) in &function.params {
             let ref_type = self.types.lookup_type(&param_type.borrow().clone())?;
@@ -589,14 +595,14 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
             *param_type.borrow_mut() = ref_type;
         }
         if function.modifiers.is_extern {
-            // This function is defined outside of tau, there is no body that we can
-            // typecheck.
+            // This function is defined outside of tau, there is no body that we
+            // can typecheck.
             self.end_scope();
             return Ok(());
         }
 
-        // Check body. If an error occures, collect errors instead of throwing them
-        // directly.
+        // Check body. If an error occures, collect errors instead of throwing
+        // them directly.
         let mut errors = Option::None;
         for stmt in &function.body {
             if let Err(err) = self.visit_stmt(stmt) {
@@ -628,8 +634,8 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
     fn visit_const(
         &mut self,
         var_name: &'a Identifier,
-        var_type: &'a TypeCell,
-        initializer: &'a Expr,
+        initializer: &'a Expr<Self::Type>,
+        source: &'a Source,
     ) -> Self::Output {
         let expected = self.types.lookup_type(&var_type.borrow().clone())?;
         let actual = self.visit_expr(initializer)?;
@@ -639,10 +645,10 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
                     "const '{}' has the type {}, but was declared as {}",
                     var_name, actual, expected
                 ),
-                &Source::union(&var_name.source(), &initializer.source()),
+                &Source::merge(&var_name.source(), &initializer.source()),
             ));
         }
-        *var_type.borrow_mut() = actual;
         Ok(())
     }
 }
+*/

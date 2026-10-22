@@ -32,3 +32,9 @@ impl Display for Identifier {
         formatter.write_str(&self.name())
     }
 }
+
+impl From<Identifier> for GlobalSymbol {
+    fn from(value: Identifier) -> GlobalSymbol {
+        value.name
+    }
+}

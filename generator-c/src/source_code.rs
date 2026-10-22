@@ -1,8 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use tau_core::{
-    ast::identifier::Identifier,
-    typing::{TypeCell, TypeDef},
-};
+use tau_core::{ast::identifier::Identifier, type_::Type};
 
 #[derive(Default, PartialEq, Debug)]
 pub struct CSourceCode(String);
@@ -19,10 +16,10 @@ impl Display for CSourceCode {
     }
 }
 
-impl From<&TypeDef> for CSourceCode {
-    fn from(type_def: &TypeDef) -> Self {
+impl From<&Type> for CSourceCode {
+    fn from(type_def: &Type) -> Self {
         CSourceCode(match type_def {
-            TypeDef::Struct(structure) => {
+            Type::Struct(structure) => {
                 let mut path = String::new();
                 path.push_str(structure.name[0].name());
                 for item in &structure.name[1..] {
@@ -31,10 +28,10 @@ impl From<&TypeDef> for CSourceCode {
                 }
                 path.into()
             }
-            TypeDef::Function(_) => todo!(),
-            TypeDef::Array(name) => format!("{}*", CSourceCode::from(name.as_ref())),
-            TypeDef::Path(name) => panic!("path '{:?}' should have been deref", name),
-            TypeDef::Number(number) => {
+            Type::Function(_) => todo!(),
+            Type::Array(name) => format!("{}*", CSourceCode::from(name.as_ref())),
+            Type::Path(name) => panic!("path '{:?}' should have been deref", name),
+            Type::Number(number) => {
                 if number.float {
                     match number.size {
                         32 => "float",
@@ -57,14 +54,13 @@ impl From<&TypeDef> for CSourceCode {
                     }
                 }
             }
-            TypeDef::Native(name) => String::from(match *name {
+            Type::Native(name) => String::from(match *name {
                 "str" => "char*",
                 "bool" => "int",
                 "void" => "void",
                 _ => unreachable!(),
             }),
-            TypeDef::RawPointer(ptr) => format!("{}*", CSourceCode::from(ptr.as_ref())),
-            TypeDef::Any => "void".into(),
+            Type::RawPointer(ptr) => format!("{}*", CSourceCode::from(ptr.as_ref())),
             other => panic!("unhandled type: {}", other),
         })
     }
