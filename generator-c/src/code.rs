@@ -1,16 +1,18 @@
 use crate::{source_code::CSourceCode, visit_vec};
-use std::{fs::File, io::prelude::*, rc::Rc};
+use std::{boxed::Box, fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        declaration::{Decl, DeclVisitor, Function, Structure},
-        expression::{Expr, ExprVisitor},
+        TypedDecl,
+        declaration::{DeclFunc, DeclStruct, DeclVisitor},
+        expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
-        statement::{Stmt, StmtType, StmtVisitor},
+        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        statement::{Stmt, StmtKind, StmtVisitor},
     },
     error,
     generator::Generator,
-    lexer::{Token, TokenType},
-    typing::{TypeCell, TypeDef},
+    lexer::Source,
+    type_::Typed,
 };
 
 pub struct CCodeGenerator {
@@ -32,7 +34,7 @@ impl<'a> CCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CCodeGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> error::Result<()> {
+    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> error::Result<()> {
         // TODO:
         let mut file = File::create(output).unwrap();
         let mut path_buf = output.to_path_buf();
@@ -58,83 +60,91 @@ impl<'a> Generator<'a> for CCodeGenerator {
     }
 }
 
-impl<'a> ExprVisitor<'a> for CCodeGenerator {
+impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
+    type Type = Typed;
     type Output = CSourceCode;
 
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> CSourceCode {
-        match operator.token_type() {
-            TokenType::Add => format!("+{}", self.visit_expr(right)),
-            TokenType::Sub => format!("-{}", self.visit_expr(right)),
-            TokenType::Not => format!("!{}", self.visit_expr(right)),
-            TokenType::Star => format!("(*{})", self.visit_expr(right)),
-            TokenType::Ref => format!("(&{})", self.visit_expr(right)),
-            _ => todo!(),
+    fn visit_unary(
+        &mut self,
+        operator: &ExprOrigin<UnaryOp>,
+        right: &'a Expr<Self::Type>,
+        _: &Self::Type,
+    ) -> CSourceCode {
+        match operator.kind() {
+            UnaryOp::Neg => format!("-{}", self.visit_expr(right)),
+            UnaryOp::Not => format!("!{}", self.visit_expr(right)),
+            UnaryOp::Ref => format!("(&{})", self.visit_expr(right)),
+            UnaryOp::Deref => format!("(*{})", self.visit_expr(right)),
         }
         .into()
     }
 
     fn visit_binary(
         &mut self,
-        left: &'a Rc<Expr>,
-        operator: &Token,
-        right: &'a Rc<Expr>,
+        left: &'a Expr<Self::Type>,
+        operator: &ExprOrigin<BinaryOp>,
+        right: &'a Expr<Self::Type>,
+        _: &Self::Type,
     ) -> CSourceCode {
         let mut render_op =
             |op: &str| format!("{} {op} {}", self.visit_expr(left), self.visit_expr(right));
-        match operator.token_type() {
-            TokenType::Add => render_op("+"),
-            TokenType::Sub => render_op("-"),
-            TokenType::Star => render_op("*"),
-            TokenType::Div => render_op("/"),
-            TokenType::Eq => render_op("=="),
-            TokenType::Neq => render_op("!="),
-            TokenType::Low => render_op("<"),
-            TokenType::Leq => render_op("<="),
-            TokenType::Gre => render_op(">"),
-            TokenType::Geq => render_op(">="),
-            TokenType::And => render_op("&&"),
-            TokenType::Or => render_op("||"),
-            TokenType::Vbar => render_op("|"),
-            TokenType::Set => render_op("="),
-            TokenType::SetAdd => render_op("+="),
-            TokenType::SetSub => render_op("-="),
-            TokenType::SetStar => render_op("*="),
-            TokenType::SetDiv => render_op("/="),
-            _ => todo!("{:?}", operator),
+        match operator.kind() {
+            BinaryOp::Add => render_op("+"),
+            BinaryOp::Sub => render_op("-"),
+            BinaryOp::Mul => render_op("*"),
+            BinaryOp::Div => render_op("/"),
+            BinaryOp::Mod => render_op("%"),
+
+            BinaryOp::Eq => render_op("=="),
+            BinaryOp::Neq => render_op("!="),
+
+            BinaryOp::Low => render_op("<"),
+            BinaryOp::Leq => render_op("<="),
+            BinaryOp::Gre => render_op(">"),
+            BinaryOp::Geq => render_op(">="),
+
+            BinaryOp::And => render_op("&&"),
+            BinaryOp::Or => render_op("||"),
+
+            BinaryOp::Set => render_op("="),
+            BinaryOp::SetAdd => render_op("+="),
+            BinaryOp::SetSub => render_op("-="),
+            BinaryOp::SetMul => render_op("*="),
+            BinaryOp::SetDiv => render_op("/="),
         }
         .into()
     }
 
     fn visit_get(
         &mut self,
-        left: &'a Rc<Expr>,
+        left: &'a Expr<Self::Type>,
         right: &Identifier,
-        lookup: &TypeCell,
+        _: &Self::Type,
     ) -> CSourceCode {
         let left = self.visit_expr(left);
         let right = right.name();
-        match lookup.borrow().as_ref() {
-            TypeDef::Struct(_) => format!("{}.{}", left, right),
-            error => panic!(
-                "can only lookup structs and modules, not {:?} at {:?} with {:?}",
-                error, left, right
-            ),
-        }
-        .into()
+        format!("{}.{}", left, right).into()
     }
 
     fn visit_index(
         &mut self,
-        object: &'a Rc<Expr>,
-        index: &'a Rc<Expr>,
-        _: &TypeCell,
+        object: &'a Expr<Self::Type>,
+        index: &'a Expr<Self::Type>,
+        _: &'a Source,
+        _: &Self::Type,
     ) -> CSourceCode {
         let object = self.visit_expr(object);
         let index = self.visit_expr(index);
         format!("{object}[{index}]").into()
     }
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> CSourceCode {
+    fn visit_call(
+        &mut self,
+        callee: &'a Expr<Self::Type>,
+        arguments: &'a [Expr<Self::Type>],
+        _: &'a Source,
+        _: &Self::Type,
+    ) -> CSourceCode {
         let callee = self.visit_expr(callee);
         let arguments = arguments
             .iter()
@@ -146,25 +156,22 @@ impl<'a> ExprVisitor<'a> for CCodeGenerator {
 
     fn visit_create_array(
         &mut self,
-        array_type: &TypeCell,
-        array_size: &Option<Rc<Expr>>,
-        fields: &'a [Rc<Expr>],
+        fields: &'a [Expr<Self::Type>],
+        _: &'a Source,
+        type_: &Self::Type,
     ) -> CSourceCode {
-        let array_type = CSourceCode::from(array_type);
-        let array_size = array_size
-            .as_ref()
-            .map(|expr| self.visit_expr(expr.as_ref()))
-            .unwrap_or_default();
         let fields = visit_vec(fields, |x| format!("{}", self.visit_expr(x)), ", ");
-        format!("new {array_type}[{array_size}]{{{fields}}}").into()
+        let type_ = CSourceCode::from(type_);
+        format!("{type_}{{{fields}}}").into()
     }
 
     fn visit_create_struct(
         &mut self,
-        struct_type: &TypeCell,
-        fields: &'a [(Identifier, Rc<Expr>)],
+        fields: &'a [(Identifier, Expr<Self::Type>)],
+        _: &'a Source,
+        type_: &Self::Type,
     ) -> CSourceCode {
-        let struct_type: CSourceCode = struct_type.into();
+        let type_: CSourceCode = type_.as_ref().into();
         let fields = visit_vec(
             fields,
             |(field_name, field_init)| {
@@ -176,18 +183,19 @@ impl<'a> ExprVisitor<'a> for CCodeGenerator {
             },
             ", ",
         );
-        format!("({struct_type}) {{{fields}}}").into()
+        format!("({type_}) {{{fields}}}").into()
     }
 
     fn visit_if(
         &mut self,
-        condition: &'a Rc<Expr>,
-        if_branch: &'a Rc<Stmt>,
-        else_branch: &'a Option<Rc<Stmt>>,
-        expression_type: &TypeCell,
+        condition: &'a Expr<Self::Type>,
+        if_branch: &'a Box<Stmt<Self::Type>>,
+        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        _: &'a Source,
+        type_: &Self::Type,
     ) -> CSourceCode {
         let condition = self.visit_expr(condition);
-        if let TypeDef::Unknown = expression_type.borrow().as_ref() {
+        if type_.as_ref().is_void() {
             let if_branch = self.visit_stmt(if_branch);
             if let Some(else_branch) = else_branch {
                 let else_branch = self.visit_stmt(else_branch);
@@ -196,8 +204,8 @@ impl<'a> ExprVisitor<'a> for CCodeGenerator {
                 format!("if ({condition}) {{ {if_branch} }}").into()
             }
         } else {
-            let stmt2expr = |stmt: &'a Stmt| match stmt.kind() {
-                StmtType::ExprStmt(expr) => expr,
+            let stmt2expr = |stmt: &'a Stmt<Self::Type>| match stmt.kind() {
+                StmtKind::ExprStmt(expr) => expr,
                 _ => panic!("Could not convert statement to expression"),
             };
 
@@ -211,41 +219,42 @@ impl<'a> ExprVisitor<'a> for CCodeGenerator {
         }
     }
 
-    fn visit_literal(&mut self, value: &Token) -> CSourceCode {
-        match value.token_type() {
-            TokenType::Bool(value) => value.to_string(),
-            TokenType::Number(value) => value.to_string(),
-            TokenType::String(content) => format!("\"{}\"", content),
-            _ => todo!(),
+    fn visit_literal(&mut self, value: &ExprOrigin<Literal>, _: &Self::Type) -> CSourceCode {
+        match value.kind() {
+            Literal::Bool(value) => value.to_string(),
+            Literal::Int(value) => value.to_string(),
+            Literal::Float(value) => value.to_string(),
+            Literal::String(content) => format!("\"{}\"", content),
         }
         .into()
     }
 
-    fn visit_variable(&mut self, name: &Identifier, _: &TypeCell) -> CSourceCode {
+    fn visit_variable(&mut self, name: &Identifier, _: &Self::Type) -> CSourceCode {
         name.into()
     }
 }
 
 impl<'a> StmtVisitor<'a> for CCodeGenerator {
+    type Type = Typed;
     type Output = CSourceCode;
 
-    fn visit_stmt(&mut self, stmt: &'a Stmt) -> Self::Output {
+    fn visit_stmt(&mut self, stmt: &'a Stmt<Self::Type>) -> Self::Output {
         let code = match stmt.kind() {
-            StmtType::Block { statements } => self.visit_block(statements),
-            StmtType::Let {
+            StmtKind::Block { statements } => self.visit_block(statements),
+            StmtKind::Let {
                 name,
-                var_type,
+                declared,
                 initializer,
-            } => self.visit_let(name, var_type, initializer),
-            StmtType::Return { value } => self.visit_return(value),
-            StmtType::Break => self.visit_break(),
-            StmtType::While { condition, body } => self.visit_while(condition, body),
-            StmtType::ExprStmt(expr) => self.visit_expr_stmt(expr),
+            } => self.visit_let(name, declared, initializer),
+            StmtKind::Return { value } => self.visit_return(value),
+            StmtKind::Break => self.visit_break(),
+            StmtKind::While { condition, body } => self.visit_while(condition, body),
+            StmtKind::ExprStmt(expr) => self.visit_expr_stmt(expr),
         };
         CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
     }
 
-    fn visit_block(&mut self, statements: &'a [Rc<Stmt>]) -> Self::Output {
+    fn visit_block(&mut self, statements: &'a [Stmt<Self::Type>]) -> Self::Output {
         self.begin_scope();
         let statements = visit_vec(
             statements,
@@ -259,16 +268,16 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_let(
         &mut self,
         name: &Identifier,
-        var_type: &TypeCell,
-        initializer: &'a Expr,
+        _: &Option<Typed>,
+        initializer: &'a Expr<Self::Type>,
     ) -> CSourceCode {
         let name = CSourceCode::from(name);
-        let var_type = CSourceCode::from(var_type);
+        let var_type = CSourceCode::from(initializer.type_().as_ref());
         let initializer = self.visit_expr(initializer);
         format!("{var_type} {name} = {initializer};").into()
     }
 
-    fn visit_return(&mut self, value: &'a Expr) -> Self::Output {
+    fn visit_return(&mut self, value: &'a Expr<Self::Type>) -> Self::Output {
         let value = self.visit_expr(value);
         format!("return {value};").into()
     }
@@ -277,7 +286,11 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
         "break;".to_string().into()
     }
 
-    fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output {
+    fn visit_while(
+        &mut self,
+        condition: &'a Expr<Self::Type>,
+        body: &'a Box<Stmt<Self::Type>>,
+    ) -> Self::Output {
         let condition = self.visit_expr(condition);
         self.begin_scope();
         let body = self.visit_stmt(body);
@@ -285,24 +298,25 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
         format!("while ({condition}) {body}").into()
     }
 
-    fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
+    fn visit_expr_stmt(&mut self, expr: &'a Expr<Self::Type>) -> Self::Output {
         let expr = self.visit_expr(expr);
         format!("{expr};").into()
     }
 }
 
 impl<'a> DeclVisitor<'a> for CCodeGenerator {
+    type Type = Typed;
     type Output = Option<CSourceCode>;
 
-    fn visit_import(&mut self, _: &[Identifier]) -> Self::Output {
+    fn visit_import(&mut self, _: &[Identifier], _: Source) -> Self::Output {
         None
     }
 
-    fn visit_struct(&mut self, _: &Structure) -> Self::Output {
+    fn visit_struct(&mut self, _: &DeclStruct, _: Source) -> Self::Output {
         None
     }
 
-    fn visit_function(&mut self, function: &Function) -> Self::Output {
+    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: Source) -> Self::Output {
         if function.modifiers.is_extern {
             return None;
         }
@@ -324,11 +338,12 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
     fn visit_const(
         &mut self,
         name: &Identifier,
-        var_type: &TypeCell,
-        initializer: &'_ Expr,
+        type_: &Typed,
+        initializer: &Expr<Self::Type>,
+        _: Source,
     ) -> Self::Output {
         let name = CSourceCode::from(name);
-        let var_type = CSourceCode::from(var_type);
+        let var_type = CSourceCode::from(type_.as_ref());
         let initializer = self.visit_expr(initializer);
         Some(format!("{var_type} {name} = {initializer};").into())
     }

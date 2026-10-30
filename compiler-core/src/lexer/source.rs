@@ -1,26 +1,28 @@
 use crate::{
-    ast::identifier::Identifier,
+    ast::{Location, identifier::Identifier},
     error::{FileId, Result, error},
-    lexer::token::Token,
 };
 use codespan_reporting::diagnostic::Diagnostic;
 use std::ops::Range;
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Source {
     file_id: FileId,
-    range: Range<usize>,
+    range: (usize, usize),
 }
 
 impl Source {
     pub fn new(file_id: FileId, range: Range<usize>) -> Source {
-        Source { file_id, range }
+        Source {
+            file_id,
+            range: (range.start, range.end),
+        }
     }
 
-    pub fn union(left: &Source, right: &Source) -> Source {
+    pub fn merge(&self, with: Source) -> Source {
         Source {
-            file_id: left.file_id,
-            range: left.range.start..right.range.end,
+            file_id: self.file_id,
+            range: (self.range.0, with.range.1),
         }
     }
 
@@ -29,13 +31,7 @@ impl Source {
     }
 
     pub fn range(&self) -> Range<usize> {
-        self.range.clone()
-    }
-}
-
-impl<'a> From<&'a Token> for &'a Source {
-    fn from(value: &'a Token) -> &'a Source {
-        value.source()
+        self.range.0..self.range.1
     }
 }
 
@@ -46,15 +42,9 @@ impl TryFrom<&Vec<Identifier>> for Source {
         if value.is_empty() {
             return error(Diagnostic::error().with_message("expected that type path is not empty"));
         }
-        Ok(Source::union(
-            value
-                .first()
-                .expect("expect first identifier exists")
-                .source(),
-            value
-                .last()
-                .expect("expect last identifier exists")
-                .source(),
-        ))
+        Ok(value
+            .first()
+            .expect("expect first identifier exists")
+            .merge(value.last().expect("expect last identifier exists")))
     }
 }

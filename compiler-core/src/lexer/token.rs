@@ -1,4 +1,14 @@
-use crate::{ast::identifier::Identifier, lexer::source::Source};
+use crate::{
+    ast::{
+        Location,
+        identifier::Identifier,
+        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+    },
+    error::{self, FileId},
+    lexer::source::Source,
+};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use std::fmt::Debug;
 use symbol_table::{GlobalSymbol, static_symbol};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -11,6 +21,8 @@ pub enum TokenType {
     BraceRight,   // }
     BracketLeft,  // [
     BracketRight, // ]
+
+    // Punctuation
     Dot,
     Comma,     // ,
     Colon,     // :
@@ -25,7 +37,7 @@ pub enum TokenType {
     Set,
     SetAdd,
     SetSub,
-    SetStar,
+    SetMul,
     SetDiv,
     Mod,
     Low,
@@ -61,23 +73,87 @@ pub enum TokenType {
 
     // Literal
     Bool(bool),
-    Number(f64),
+    Int(i64),
+    Float(f64),
     String(String),
+
+    // Identifiers, e.g types and variables
     Identifier(GlobalSymbol),
 
     // Misc
     Eof,
 }
 
-impl From<Token> for TokenType {
-    fn from(value: Token) -> Self {
-        value.token_type
-    }
-}
-
 impl TokenType {
     pub fn is_identifier(&self) -> bool {
         matches!(self, Self::Identifier(_))
+    }
+}
+
+impl TryFrom<TokenType> for BinaryOp {
+    type Error = Diagnostic<FileId>;
+
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+        Ok(match value {
+            TokenType::Add => BinaryOp::Add,
+            TokenType::Sub => BinaryOp::Sub,
+            TokenType::Div => BinaryOp::Div,
+            TokenType::Star => BinaryOp::Mul,
+            TokenType::Mod => BinaryOp::Mod,
+
+            TokenType::Set => BinaryOp::Set,
+            TokenType::SetAdd => BinaryOp::SetAdd,
+            TokenType::SetSub => BinaryOp::SetSub,
+            TokenType::SetMul => BinaryOp::SetMul,
+            TokenType::SetDiv => BinaryOp::SetDiv,
+
+            TokenType::Eq => BinaryOp::Eq,
+            TokenType::Neq => BinaryOp::Neq,
+
+            TokenType::Low => BinaryOp::Low,
+            TokenType::Leq => BinaryOp::Leq,
+            TokenType::Gre => BinaryOp::Gre,
+            TokenType::Geq => BinaryOp::Geq,
+
+            TokenType::And => BinaryOp::And,
+            TokenType::Or => BinaryOp::Or,
+
+            _ => return Err(Diagnostic::error().with_message("token is not a binary operator")),
+        })
+    }
+}
+
+impl TryFrom<TokenType> for UnaryOp {
+    type Error = Diagnostic<FileId>;
+
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+        Ok(match value {
+            TokenType::Sub => Self::Neg,
+            TokenType::Not => Self::Not,
+            TokenType::Ref => Self::Ref,
+            TokenType::Star => Self::Deref,
+
+            _ => {
+                return Err(Diagnostic::error().with_message("token is not a unary operator"));
+            }
+        })
+    }
+}
+
+impl TryFrom<TokenType> for Literal {
+    type Error = Diagnostic<FileId>;
+
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
+        Ok(match value {
+            TokenType::Bool(value) => Self::Bool(value),
+            TokenType::Int(value) => Self::Int(value),
+            TokenType::Float(value) => Self::Float(value),
+            TokenType::String(value) => Self::String(value),
+
+            _ => {
+                return Err(Diagnostic::error().with_message("token is not a literal"));
+            }
+        })
     }
 }
 
@@ -95,15 +171,40 @@ impl Token {
     pub fn token_type(&self) -> &TokenType {
         &self.token_type
     }
+}
 
-    pub fn source(&self) -> &Source {
-        &self.source
+impl Location for Token {
+    fn source(&self) -> Source {
+        self.source
+    }
+}
+
+impl From<Token> for TokenType {
+    fn from(value: Token) -> Self {
+        value.token_type
     }
 }
 
 impl From<Token> for Source {
     fn from(value: Token) -> Self {
         value.source
+    }
+}
+
+impl<O> TryFrom<Token> for ExprOrigin<O>
+where
+    O: TryFrom<TokenType, Error = Diagnostic<FileId>> + Debug,
+{
+    type Error = error::Error;
+
+    fn try_from(value: Token) -> error::Result<Self> {
+        let (type_, source) = (value.token_type, value.source);
+        let kind = O::try_from(type_).map_err(|e| {
+            error::Error::new(vec![
+                e.with_label(Label::primary(source.file_id(), source.range())),
+            ])
+        })?;
+        Ok(Self::new(kind, source))
     }
 }
 

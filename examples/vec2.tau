@@ -7,7 +7,7 @@ struct Vec2 {
     y: f64
 }
 
-const ZERO: Vec2 = Vec2 { x=0, y=0 }
+const ZERO: Vec2 = Vec2 { x=0, y=0 };
 
 fn vec2(x: f64, y: f64) -> Vec2 =
     Vec2 { x=x, y=y }
@@ -24,10 +24,10 @@ fn length(v: Vec2) -> f64 =
 fn norm(v: Vec2) -> Vec2 =
     let len = length(v);
     in
-        if (len == 0) { ZERO }
+        if len == 0.0 { ZERO }
         else { vec2(v.x / len, v.y / len) }
 
 io fn main() {
-    let _ = add(vec2(3, 4), vec2(4, -2));
+    let _ = add(vec2(3.0, 4.0), vec2(4.0, -2.0));
     puts("Hello, World!");
 }

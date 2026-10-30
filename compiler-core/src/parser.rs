@@ -1,16 +1,18 @@
 use crate::{
     ast::{
-        declaration::{Decl, Function, Modifiers, Structure},
-        expression::{Expr, ExprKind},
+        Location, UntypedDecl, UntypedExpr, UntypedStmt,
+        declaration::{DeclFunc, DeclKind, DeclStruct, FuncModifiers},
         identifier::Identifier,
-        statement::{Stmt, StmtType},
+        origin::ExprOrigin,
+        prelude::*,
+        statement::StmtKind,
     },
     error::{Error, Result, diagnostic, error},
-    lexer::{Source, Token, TokenType},
-    typing::{self, TypeDef},
+    lexer::{Token, TokenType},
+    type_::{Type, prelude::*},
 };
-use std::{cell::RefCell, collections::HashMap, iter::Iterator, rc::Rc};
-use symbol_table::static_symbol;
+use std::{boxed::Box, iter::Iterator, sync::Arc};
+use symbol_table::{GlobalSymbol, static_symbol};
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
@@ -19,7 +21,7 @@ pub struct Parser<I: Iterator<Item = Result<Token>>> {
     /// generic, we allow any type of token iterator.
     tokens: I,
     /// All declaration's that we parsed are added to this collection.
-    declarations: Vec<Decl>,
+    declarations: Vec<UntypedDecl>,
     /// The last token that the parser read. This is used for the peek() method.
     /// Why do we implement peek() ourself and don't use Peekable instead? The
     /// issue with Peekable is, that it does not propagate the errors, which is
@@ -36,7 +38,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
-    pub fn parse(mut self) -> Result<Vec<Decl>> {
+    pub fn parse(mut self) -> Result<Vec<UntypedDecl>> {
         while self.has_next() {
             let declaration = self.decl()?;
             self.declarations.push(declaration);
@@ -44,24 +46,30 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         Ok(self.declarations)
     }
 
-    pub(crate) fn decl(&mut self) -> Result<Decl> {
+    pub(crate) fn decl(&mut self) -> Result<UntypedDecl> {
         let token = self.advance()?;
         if token.token_type() == &TokenType::Eof {
             return error(diagnostic("Found end of File but expected a token", &token));
         }
         match token.token_type() {
-            TokenType::Const => self.decl_const(),
-            TokenType::Extern => self.decl_modifier(Modifiers {
-                is_extern: true,
-                ..Modifiers::default()
-            }),
-            TokenType::Io => self.decl_modifier(Modifiers {
-                is_io: true,
-                ..Modifiers::default()
-            }),
-            TokenType::Function => self.decl_function(Modifiers::default()),
-            TokenType::Import => self.decl_import(),
-            TokenType::Struct => self.decl_struct(),
+            TokenType::Const => self.decl_const(token),
+            TokenType::Extern => self.decl_modifier(
+                token,
+                FuncModifiers {
+                    is_extern: true,
+                    ..Default::default()
+                },
+            ),
+            TokenType::Io => self.decl_modifier(
+                token,
+                FuncModifiers {
+                    is_io: true,
+                    ..Default::default()
+                },
+            ),
+            TokenType::Function => self.decl_function(token, FuncModifiers::default()),
+            TokenType::Import => self.decl_import(token),
+            TokenType::Struct => self.decl_struct(token),
             token_type => error(diagnostic(
                 format!("Found {:?} expected declaration", &token_type),
                 &token,
@@ -69,41 +77,52 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
-    fn decl_const(&mut self) -> Result<Decl> {
-        let (name, var_type) = self.decl_type_def()?;
+    fn decl_const(&mut self, start: Token) -> Result<UntypedDecl> {
+        let (name, type_) = self.decl_type_def()?;
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
-        Ok(Decl::Const {
-            name,
-            var_type,
-            initializer,
-        })
+        let end = self.consume(&TokenType::Semicolon)?;
+        let source = start.merge(&end);
+        Ok(UntypedDecl::new(
+            DeclKind::Const {
+                name,
+                type_,
+                initializer,
+            },
+            source,
+        ))
     }
 
-    fn decl_modifier(&mut self, modifiers: Modifiers) -> Result<Decl> {
+    fn decl_modifier(&mut self, start: Token, modifiers: FuncModifiers) -> Result<UntypedDecl> {
         let token = self.advance()?;
         match token.token_type() {
             TokenType::Extern => {
                 if modifiers.is_extern {
                     error(diagnostic("function is already extern", &token))
                 } else {
-                    self.decl_modifier(Modifiers {
-                        is_extern: true,
-                        ..modifiers
-                    })
+                    self.decl_modifier(
+                        start,
+                        FuncModifiers {
+                            is_extern: true,
+                            ..modifiers
+                        },
+                    )
                 }
             }
             TokenType::Io => {
                 if modifiers.is_io {
                     error(diagnostic("function is already io", &token))
                 } else {
-                    self.decl_modifier(Modifiers {
-                        is_extern: true,
-                        ..modifiers
-                    })
+                    self.decl_modifier(
+                        start,
+                        FuncModifiers {
+                            is_extern: true,
+                            ..modifiers
+                        },
+                    )
                 }
             }
-            TokenType::Function => self.decl_function(modifiers),
+            TokenType::Function => self.decl_function(start, modifiers),
             _ => error(diagnostic(
                 "unexpected return type, expected modifier or function",
                 &token,
@@ -111,7 +130,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
-    fn decl_function(&mut self, modifiers: Modifiers) -> Result<Decl> {
+    fn decl_function(&mut self, start: Token, modifiers: FuncModifiers) -> Result<UntypedDecl> {
         let name = self.advance()?;
         if !name.token_type().is_identifier() {
             return error(diagnostic("expected an function identifier", &name));
@@ -131,12 +150,10 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             self.consume(&TokenType::To)?;
             self.decl_type()?
         } else {
-            Rc::new(TypeDef::Path(vec![Identifier::new(
-                static_symbol!("void"),
-                // TODO: replace source with None, as we can not find any source for an implicit
-                // token. Maybe make source optional?
-                end.into(),
-            )]))
+            Arc::new(Type::Named {
+                name: static_symbol!("void"),
+                arguments: vec![],
+            })
         };
 
         let body = if modifiers.is_extern {
@@ -145,16 +162,20 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             self.decl_body()?
         };
 
-        Ok(Decl::Function(Function {
-            name: Identifier::from(name),
-            return_type: RefCell::new(return_type),
-            params,
-            body,
-            modifiers,
-        }))
+        let source = start.merge(&end);
+        Ok(UntypedDecl::new(
+            DeclKind::Func(DeclFunc {
+                name: Identifier::from(name),
+                return_type,
+                params,
+                body,
+                modifiers,
+            }),
+            source,
+        ))
     }
 
-    fn decl_body(&mut self) -> Result<Vec<Stmt>> {
+    fn decl_body(&mut self) -> Result<Vec<UntypedStmt>> {
         let mut body = Vec::new();
         if self.peek()?.token_type() == &TokenType::BraceLeft {
             self.consume(&TokenType::BraceLeft)?;
@@ -172,15 +193,13 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.consume(&TokenType::In)?;
             }
             let value = self.expr()?;
-            body.push(Stmt::new(
-                value.source().clone(),
-                StmtType::Return { value },
-            ));
+            let source = value.source().clone();
+            body.push(UntypedStmt::new(StmtKind::Return { value }, source));
         }
         Ok(body)
     }
 
-    fn decl_import(&mut self) -> Result<Decl> {
+    fn decl_import(&mut self, start: Token) -> Result<UntypedDecl> {
         let mut path = Vec::new();
         loop {
             path.push(Identifier::from(self.advance()?));
@@ -190,98 +209,103 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 break;
             }
         }
-        Ok(Decl::Import(path))
+        let end = self.consume(&TokenType::Semicolon)?;
+        let source = start.merge(&end);
+        Ok(UntypedDecl::new(DeclKind::Import(path), source))
     }
 
-    fn decl_struct(&mut self) -> Result<Decl> {
+    fn decl_struct(&mut self, start: Token) -> Result<UntypedDecl> {
         let name = self.advance()?;
         if !name.token_type().is_identifier() {
             return error(diagnostic("expected a struct identifier", &name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
-        let mut fields = HashMap::new();
+        let mut fields = Vec::new();
         while self.peek()?.token_type().is_identifier() {
             let (field_name, field_type) = self.decl_type_def()?;
-            fields.insert(field_name, field_type);
+            fields.push((field_name, field_type));
             if *self.peek()?.token_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma)?;
             }
         }
 
-        self.consume(&TokenType::BraceRight)?;
-        Ok(Decl::Struct(Structure {
-            name: Identifier::from(name),
-            fields,
-        }))
+        let end = self.consume(&TokenType::BraceRight)?;
+        let source = start.merge(&end);
+        Ok(UntypedDecl::new(
+            DeclKind::Struct(DeclStruct {
+                name: Identifier::from(name),
+                fields,
+            }),
+            source,
+        ))
     }
 
-    fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
+    fn decl_type_def(&mut self) -> Result<(Identifier, Arc<Type>)> {
         let name = self.advance()?;
         if !name.token_type().is_identifier() {
             return error(diagnostic("expected a type identifier", &name));
         }
         self.consume(&TokenType::Colon)?;
         let type_def = self.decl_type()?;
-        Ok((Identifier::from(name), RefCell::new(type_def)))
+        Ok((Identifier::from(name), type_def))
     }
 
-    fn decl_type(&mut self) -> Result<Rc<TypeDef>> {
+    fn decl_type(&mut self) -> Result<Arc<Type>> {
         let next = self.advance()?;
         match next.token_type() {
-            TokenType::Star => Ok(Rc::new(TypeDef::RawPointer(self.decl_type()?))),
+            TokenType::Star => Ok(Arc::new(Type::Ptr {
+                unchecked: true,
+                type_: self.decl_type()?,
+            })),
             TokenType::BracketLeft => {
-                let type_def = Rc::new(TypeDef::Array(self.decl_type()?));
+                let type_def = Arc::new(Type::Ptr {
+                    unchecked: false,
+                    type_: self.decl_type()?,
+                });
                 self.consume(&TokenType::BracketRight)?;
                 Ok(type_def)
             }
             TokenType::Identifier(_) => {
-                let mut path = vec![next.into()];
-                while *self.peek()?.token_type() == TokenType::Dot {
-                    self.consume(&TokenType::Dot)?;
-                    let id = self.advance()?.into();
-                    path.push(id);
-                }
-                Ok(Rc::new(TypeDef::Path(path)))
+                // We may add arguments when we support generics. Until then the
+                // arguments are always empty.
+                Ok(Arc::new(Type::Named {
+                    name: GlobalSymbol::from(Identifier::from(next)),
+                    arguments: vec![],
+                }))
             }
             TokenType::ParenLeft => {
-                let mut parameters = vec![self.decl_type()?];
+                let mut arguments = vec![self.decl_type()?];
                 while *self.peek()?.token_type() == TokenType::Comma {
                     self.consume(&TokenType::Comma)?;
-                    let param = self.decl_type()?;
-                    parameters.push(param);
+                    let argument = self.decl_type()?;
+                    arguments.push(argument);
                 }
                 self.consume(&TokenType::To)?;
-                let return_type = self.decl_type()?;
+                let return_ = self.decl_type()?;
                 self.consume(&TokenType::ParenRight)?;
-                Ok(Rc::new(TypeDef::Function(typing::Function {
-                    // TODO: replace with auto-generated function type
-                    name: Vec::new(),
-                    parameters,
-                    return_type,
-                })))
+                Ok(Arc::new(Type::Fn { arguments, return_ }))
             }
             _ => error(diagnostic("expected a type definition", &next)),
         }
     }
 
-    pub(crate) fn stmt(&mut self) -> Result<Stmt> {
+    pub(crate) fn stmt(&mut self) -> Result<UntypedStmt> {
         let peek = self.peek()?;
         match peek.token_type() {
             TokenType::BraceLeft => self.stmt_block(),
             TokenType::Let => self.stmt_let(false),
             TokenType::Return => {
-                let current = self.advance()?;
+                let start = self.advance()?;
                 let expr = self.expr()?;
-                self.consume(&TokenType::Semicolon)?;
-                Ok(Stmt::new(
-                    Source::union(&current.source(), &expr.source()),
-                    StmtType::Return { value: expr },
-                ))
+                let end = self.consume(&TokenType::Semicolon)?;
+                let source = start.merge(&end);
+                Ok(UntypedStmt::new(StmtKind::Return { value: expr }, source))
             }
             TokenType::Break => {
                 let current = self.advance()?;
-                Ok(Stmt::new(current.source().clone(), StmtType::Break))
+                let source = current.source().clone();
+                Ok(UntypedStmt::new(StmtKind::Break, source))
             }
             TokenType::For => self.stmt_for(),
             TokenType::While => self.stmt_while(),
@@ -290,22 +314,21 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 if *self.peek()?.token_type() == TokenType::Semicolon {
                     self.advance()?;
                 }
-                Ok(Stmt::new(expr.source().clone(), StmtType::ExprStmt(expr)))
+                let source = expr.source().clone();
+                Ok(UntypedStmt::new(StmtKind::ExprStmt(expr), source))
             }
         }
     }
 
-    fn stmt_block(&mut self) -> Result<Stmt> {
-        let current = self.advance()?;
+    fn stmt_block(&mut self) -> Result<UntypedStmt> {
+        let start = self.advance()?;
         let mut statements = Vec::new();
         while *self.peek()?.token_type() != TokenType::BraceRight {
-            statements.push(Rc::new(self.stmt()?));
+            statements.push(self.stmt()?);
         }
-        let rhs = self.consume(&TokenType::BraceRight)?;
-        Ok(Stmt::new(
-            Source::union(&current.source(), &rhs.source()),
-            StmtType::Block { statements },
-        ))
+        let end = self.consume(&TokenType::BraceRight)?;
+        let source = start.merge(&end);
+        Ok(UntypedStmt::new(StmtKind::Block { statements }, source))
     }
 
     /// Parses a single let statement. A let statement is of the form:
@@ -327,7 +350,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     /// Not every let statement has its own let token. The keyword may already
     /// be consumed by the parser at a previous step. Therefore it may be
     /// skipped by setting the skip let arg to true.
-    fn stmt_let(&mut self, skip_let: bool) -> Result<Stmt> {
+    fn stmt_let(&mut self, skip_let: bool) -> Result<UntypedStmt> {
         let (start, name) = if skip_let {
             let next = self.advance()?;
             (next.clone(), next)
@@ -335,85 +358,84 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             (self.advance()?, self.advance()?)
         };
         if !name.token_type().is_identifier() {
-            return error(diagnostic("expected a variable identifier", name.source()));
+            return error(diagnostic("expected a variable identifier", &name));
         }
-        let var_type = if *self.peek()?.token_type() != TokenType::Set {
+        let declared = if *self.peek()?.token_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
-            self.decl_type()?
+            Some(self.decl_type()?)
         } else {
-            Rc::new(TypeDef::Unknown)
+            None
         };
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
-        Ok(Stmt::new(
-            Source::union(&start.source(), &initializer.source()),
-            StmtType::Let {
+        let source = start.merge(&initializer);
+        Ok(UntypedStmt::new(
+            StmtKind::Let {
                 name: Identifier::from(name),
-                var_type: RefCell::new(var_type),
+                declared,
                 initializer,
             },
+            source,
         ))
     }
 
-    fn stmt_for(&mut self) -> Result<Stmt> {
-        let current = self.advance()?;
-        let initializer = Rc::new(self.stmt()?);
+    fn stmt_for(&mut self) -> Result<UntypedStmt> {
+        let start = self.advance()?;
+        let initializer = self.stmt()?;
         self.consume(&TokenType::Semicolon)?;
         let condition = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
-        let body = Rc::new(self.stmt_block()?);
-        let source = Source::union(&current.source(), &body.source());
-        let increment = Rc::new(Stmt::new(
-            increment.source().clone(),
-            StmtType::ExprStmt(increment),
-        ));
-        let body = Rc::new(Stmt::new(
-            body.source().clone(),
-            StmtType::Block {
-                statements: vec![body, increment],
-            },
-        ));
-        let statements = vec![
-            initializer,
-            Rc::new(Stmt::new(
-                source.clone(),
-                StmtType::While { condition, body },
-            )),
-        ];
-        Ok(Stmt::new(source, StmtType::Block { statements }))
+        let body = self.stmt_block()?;
+        let source = increment.source();
+        let increment = expr_stmt(increment, source);
+        let source = body.source();
+        let body = block(vec![body, increment], source);
+        let source = start.merge(&body);
+        let statements = vec![initializer, while_(condition, body, source)];
+        Ok(block(statements, source))
     }
 
-    fn stmt_while(&mut self) -> Result<Stmt> {
-        let current = self.advance()?;
+    fn stmt_while(&mut self) -> Result<UntypedStmt> {
+        let start = self.advance()?;
         let condition = self.expr()?;
-        let body = Rc::new(self.stmt_block()?);
-        Ok(Stmt::new(
-            Source::union(&current.source(), &body.source()),
-            StmtType::While { condition, body },
+        let body = self.stmt_block()?;
+        let source = start.merge(&body);
+        Ok(UntypedStmt::new(
+            StmtKind::While {
+                condition,
+                body: Box::new(body),
+            },
+            source,
         ))
     }
 
-    pub(crate) fn expr(&mut self) -> Result<Expr> {
+    pub(crate) fn expr(&mut self) -> Result<UntypedExpr> {
         self.expr_bp(0)
     }
 
-    fn expr_bp(&mut self, min_bp: u8) -> Result<Expr> {
+    /// Parses the next expression starting with the given minimum binding
+    /// power. The binding power is required for the pratt parsing algorithm
+    /// that we use.
+    fn expr_bp(&mut self, min_bp: u8) -> Result<UntypedExpr> {
         let next = self.advance()?;
         let mut lhs = self.expr_lhs(next)?;
         while self.has_next() {
             let op = self.peek()?.token_type();
             if let Some(l_bp) = Parser::<I>::postfix_binding_power(op) {
-                // If current binding power is below minimum, we return the left hand side
-                // expression
+                // If current binding power is below minimum, we return the left
+                // hand side expression
                 if l_bp < min_bp {
                     break;
                 }
                 let next = self.advance()?;
                 match next.token_type() {
                     TokenType::BracketLeft => {
-                        lhs = self.expr_index(lhs)?;
+                        lhs = self.expr_index_array(lhs)?;
+                    }
+                    TokenType::Dot => {
+                        lhs = self.expr_access_struct(lhs)?;
                     }
                     TokenType::ParenLeft => {
                         lhs = self.expr_call(lhs)?;
@@ -421,8 +443,8 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                     unexpected => unreachable!("Unexpected operator: {:?}", unexpected),
                 }
             } else if let Some((l_bp, r_bp)) = Parser::<I>::infix_binding_power(op) {
-                // If current binding power is below minimum, we return the left hand side
-                // expression
+                // If current binding power is below minimum, we return the left
+                // hand side expression
                 if l_bp < min_bp {
                     break;
                 }
@@ -436,12 +458,10 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         Ok(lhs)
     }
 
-    /**
-     * Parses the left hand side of a expression.
-     */
-    fn expr_lhs(&mut self, next: Token) -> Result<Expr> {
+    /// Parses the left hand side of a expression.
+    fn expr_lhs(&mut self, next: Token) -> Result<UntypedExpr> {
         match next.token_type() {
-            TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => {
+            TokenType::Bool(_) | TokenType::Int(_) | TokenType::Float(_) | TokenType::String(_) => {
                 self.expr_literal(next)
             }
             TokenType::Identifier(_) => self.expr_identifier(next),
@@ -450,143 +470,108 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.expr_unary(next)
             }
             TokenType::ParenLeft => self.expr_grouping(),
-            TokenType::If => self.expr_if(),
+            TokenType::BracketLeft => self.expr_create_array(next),
+            TokenType::If => self.expr_if(next),
             x => error(diagnostic(
                 format!("found {:?} expected expression", x),
-                next.source(),
+                &next,
             ))?,
         }
     }
 
-    fn expr_unary(&mut self, op: Token) -> Result<Expr> {
+    /// Parses an unary expression.
+    ///
+    /// ```txt
+    /// unary_op expr
+    /// ```
+    fn expr_unary(&mut self, op: Token) -> Result<UntypedExpr> {
         let r_bp = Parser::<I>::prefix_binding_power(op.token_type());
-        let rhs = self.expr_bp(r_bp)?;
-        Ok(Expr::new(
-            Source::union(&op.source(), &rhs.source()),
-            ExprKind::Unary {
-                operator: op,
-                right: Rc::new(rhs),
-            },
-        ))
+        let expr = self.expr_bp(r_bp)?;
+        let unary_op = ExprOrigin::try_from(op)?;
+        Ok(unary(unary_op, expr, ()))
     }
 
-    fn expr_binary(&mut self, lhs: Expr, bp: u8) -> Result<Expr> {
-        let next = self.advance()?;
-        if *next.token_type() == TokenType::Dot {
-            let rhs = self.advance()?;
-            if !rhs.token_type().is_identifier() {
-                return error(diagnostic(
-                    "expected an identidier on the RHS",
-                    rhs.source(),
-                ));
-            }
-            Ok(Expr::new(
-                Source::union(&lhs.source(), &rhs.source()),
-                ExprKind::Get {
-                    left: Rc::new(lhs),
-                    right: Identifier::from(rhs),
-                    lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
-                },
-            ))
-        } else {
-            let rhs = self.expr_bp(bp)?;
-            Ok(Expr::new(
-                Source::union(&lhs.source(), &rhs.source()),
-                ExprKind::Binary {
-                    left: Rc::new(lhs),
-                    operator: next,
-                    right: Rc::new(rhs),
-                },
-            ))
-        }
+    /// Parses a binary expression.
+    ///
+    /// ```txt
+    /// expr binary_op expr
+    /// ```
+    fn expr_binary(&mut self, left: UntypedExpr, bp: u8) -> Result<UntypedExpr> {
+        let operator = self.advance()?;
+        let right = self.expr_bp(bp)?;
+        let operator = ExprOrigin::try_from(operator)?;
+        Ok(binary(left, operator, right, ()))
     }
 
-    fn expr_call(&mut self, lhs: Expr) -> Result<Expr> {
+    /// Parses an function call. The callee is the lambda expression, function
+    /// or associated method that gets called.
+    ///
+    /// ```txt
+    /// callee "(" (expr ("," expr)*)? ")"
+    /// ```
+    fn expr_call(&mut self, callee: UntypedExpr) -> Result<UntypedExpr> {
         let mut arguments = Vec::new();
         while *self.peek()?.token_type() != TokenType::ParenRight {
-            arguments.push(Rc::new(self.expr()?));
-            if *self.peek()?.token_type() == TokenType::Comma {
+            arguments.push(self.expr()?);
+            if *self.peek()?.token_type() != TokenType::ParenRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        let rhs = self.consume(&TokenType::ParenRight)?;
-        Ok(Expr::new(
-            Source::union(&lhs.source(), &rhs.source()),
-            ExprKind::Call {
-                callee: Rc::new(lhs),
-                arguments,
-            },
-        ))
+        let end = self.consume(&TokenType::ParenRight)?;
+        let source = callee.merge(&end);
+        Ok(call(callee, arguments, source, ()))
     }
 
-    fn expr_create_or_index(&mut self, next: Token) -> Result<Expr> {
-        self.advance()?;
-        if *self.peek()?.token_type() == TokenType::BracketRight {
-            // No index was given, only a array creation is possible
-            self.advance()?;
-            self.expr_create_array(next, None)
-        } else {
-            // A index was given, can be a sized array or array index
-            let expr = Rc::new(self.expr()?);
-            let current = self.consume(&TokenType::BracketRight)?;
-            if *self.peek()?.token_type() == TokenType::BraceLeft {
-                self.expr_create_array(next, Some(expr))
-            } else {
-                let kind = ExprKind::Index {
-                    object: Rc::new(Expr::new(
-                        current.source().clone(),
-                        ExprKind::Variable {
-                            name: Identifier::from(next),
-                            variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-                        },
-                    )),
-                    index: expr,
-                    lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
-                };
-                Ok(Expr::new(current.source().clone(), kind))
-            }
+    /// Parses an index array operation.
+    ///
+    /// ```txt
+    /// object "[" index "]"
+    /// ```
+    fn expr_index_array(&mut self, object: UntypedExpr) -> Result<UntypedExpr> {
+        let index = self.expr()?;
+        let end = self.consume(&TokenType::BracketRight)?;
+        let source = object.merge(&end);
+
+        Ok(index_array(object, index, source, ()))
+    }
+
+    /// Parses an struct access operation.
+    ///
+    /// ```txt
+    /// left "." right
+    /// ```
+    fn expr_access_struct(&mut self, left: UntypedExpr) -> Result<UntypedExpr> {
+        let right = self.advance()?;
+        if !right.token_type().is_identifier() {
+            return error(diagnostic("expected an identidier on the RHS", &right));
         }
+        let right = Identifier::from(right);
+        Ok(access_struct(left, right, ()))
     }
 
-    fn expr_create_array(
-        &mut self,
-        array_type: Token,
-        array_size: Option<Rc<Expr>>,
-    ) -> Result<Expr> {
-        self.consume(&TokenType::BraceLeft)?;
+    /// Parses an array creation.
+    ///
+    /// ```txt
+    /// "[" type ";" expr ("," expr)* ","? "]"
+    /// ```
+    fn expr_create_array(&mut self, start: Token) -> Result<UntypedExpr> {
+        let type_ = self.decl_type()?;
+        self.consume(&TokenType::Semicolon)?;
         let mut fields = Vec::new();
-        while *self.peek()?.token_type() != TokenType::BraceRight {
-            fields.push(Rc::new(self.expr()?));
-            if *self.peek()?.token_type() != TokenType::BraceRight {
+        while *self.peek()?.token_type() != TokenType::BracketRight {
+            fields.push(self.expr()?);
+            if *self.peek()?.token_type() != TokenType::BracketRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        let current = self.consume(&TokenType::BraceRight)?;
+        let type_ = array(type_, fields.len());
+        let end = self.consume(&TokenType::BracketRight)?;
 
-        Ok(Expr::new(
-            Source::union(&array_type.source(), &current.source()),
-            ExprKind::CreateArray {
-                array_type: RefCell::new(Rc::new(TypeDef::Path(vec![array_type.into()]))),
-                array_size,
-                fields,
-            },
-        ))
+        let source = start.merge(&end);
+        Ok(create_array(fields, source, type_))
     }
 
-    fn expr_index(&mut self, lhs: Expr) -> Result<Expr> {
-        let rhs = self.expr()?;
-        self.consume(&TokenType::BracketRight)?;
-        Ok(Expr::new(
-            Source::union(&lhs.source(), &rhs.source()),
-            ExprKind::Index {
-                object: Rc::new(lhs),
-                index: Rc::new(rhs),
-                lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
-            },
-        ))
-    }
-
-    fn expr_create_struct(&mut self, struct_name: Token) -> Result<Expr> {
+    fn expr_create_struct(&mut self, struct_name: Token) -> Result<UntypedExpr> {
         let current = self.consume(&TokenType::BraceLeft)?;
         let mut fields = Vec::new();
         while *self.peek()?.token_type() != TokenType::BraceRight {
@@ -594,11 +579,11 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             if !name.token_type().is_identifier() {
                 return error(diagnostic(
                     "expected field name identifier for the struct",
-                    name.source(),
+                    &name,
                 ));
             }
             self.consume(&TokenType::Set)?;
-            let expr = Rc::new(self.expr()?);
+            let expr = self.expr()?;
             let field = (Identifier::from(name), expr);
             fields.push(field);
             if *self.peek()?.token_type() != TokenType::BraceRight {
@@ -606,19 +591,18 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             }
         }
         self.consume(&TokenType::BraceRight)?;
-        Ok(Expr::new(
-            Source::union(&struct_name.source(), &current.source()),
-            ExprKind::CreateStruct {
-                struct_type: RefCell::new(Rc::new(TypeDef::Path(
-                    // TODO: include full module path
-                    vec![struct_name.into()],
-                ))),
-                fields,
-            },
+        let source = struct_name.merge(&current);
+
+        // TODO: parse more complex names and generics
+        let identifier = Identifier::from(struct_name);
+        Ok(create_struct(
+            fields,
+            source,
+            named(identifier.into(), vec![]),
         ))
     }
 
-    fn expr_grouping(&mut self) -> Result<Expr> {
+    fn expr_grouping(&mut self) -> Result<UntypedExpr> {
         // Parse a new expression from the top
         let lhs = self.expr();
         // Consume the ending parenthesis
@@ -626,59 +610,42 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         lhs
     }
 
-    fn expr_identifier(&mut self, next: Token) -> Result<Expr> {
+    fn expr_identifier(&mut self, next: Token) -> Result<UntypedExpr> {
         match *self.peek()?.token_type() {
             TokenType::BraceLeft => self.expr_create_struct(next),
-            TokenType::BracketLeft => self.expr_create_or_index(next),
-            _ => Ok(Expr::new(
-                next.source().clone(),
-                ExprKind::Variable {
-                    name: Identifier::from(next),
-                    variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-                },
-            )),
+            _ => {
+                let name = Identifier::from(next);
+                Ok(variable(name, ()))
+            }
         }
     }
 
-    fn expr_if(&mut self) -> Result<Expr> {
-        let condition = Rc::new(self.expr()?);
+    fn expr_if(&mut self, start: Token) -> Result<UntypedExpr> {
+        let condition = self.expr()?;
         self.consume(&TokenType::BraceLeft)?;
-        let if_branch = Rc::new(self.stmt()?);
-        let brace = self.consume(&TokenType::BraceRight)?;
+        let if_branch = self.stmt()?;
+        let end = self.consume(&TokenType::BraceRight)?;
         let (else_branch, source) = if *self.peek()?.token_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
             self.consume(&TokenType::BraceLeft)?;
             let else_branch = self.stmt()?;
-            let brace = self.consume(&TokenType::BraceRight)?;
-            let source = Source::union(&condition.source(), &brace.source());
-            (Some(Rc::new(else_branch)), source)
+            let end = self.consume(&TokenType::BraceRight)?;
+            let source = start.merge(&end);
+            (Some(else_branch), source)
         } else {
-            let source = Source::union(&condition.source(), &brace.source());
+            let source = start.merge(&end);
             (None, source)
         };
-        Ok(Expr::new(
-            source,
-            ExprKind::If {
-                condition,
-                if_branch,
-                else_branch,
-                expression_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-            },
-        ))
+        Ok(if_(condition, if_branch, else_branch, source, ()))
     }
 
-    fn expr_literal(&mut self, next: Token) -> Result<Expr> {
-        Ok(Expr::new(next.source().clone(), ExprKind::Literal(next)))
+    fn expr_literal(&mut self, next: Token) -> Result<UntypedExpr> {
+        Ok(literal(ExprOrigin::try_from(next)?, ()))
     }
 
-    fn expr_self(&mut self, next: Token) -> Result<Expr> {
-        Ok(Expr::new(
-            next.source().clone(),
-            ExprKind::Variable {
-                name: Identifier::from(next),
-                variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
-            },
-        ))
+    fn expr_self(&mut self, next: Token) -> Result<UntypedExpr> {
+        let name = Identifier::from(next);
+        Ok(variable(name, ()))
     }
 
     fn prefix_binding_power(operator: &TokenType) -> u8 {
@@ -695,7 +662,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             TokenType::Set
             | TokenType::SetAdd
             | TokenType::SetSub
-            | TokenType::SetStar
+            | TokenType::SetMul
             | TokenType::SetDiv => Some((1, 2)),
             TokenType::And | TokenType::Or | TokenType::Vbar => Some((3, 4)),
             TokenType::Low
@@ -706,7 +673,6 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             | TokenType::Neq => Some((5, 6)),
             TokenType::Add | TokenType::Sub | TokenType::Mod => Some((7, 8)),
             TokenType::Star | TokenType::Div => Some((9, 10)),
-            TokenType::Dot => Some((12, 11)),
             _ => None,
         }
     }
@@ -715,7 +681,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         match operator {
             // The BraceRight token type is not included here,
             // because we expect that it should only end a statement.
-            TokenType::BracketLeft | TokenType::ParenLeft => Some(11),
+            TokenType::BracketLeft | TokenType::ParenLeft | TokenType::Dot => Some(11),
             _ => None,
         }
     }
@@ -730,9 +696,9 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 format!(
                     "expected {:?} but found {:?}",
                     expected.clone(),
-                    next.token_type().clone()
+                    next.token_type()
                 ),
-                next.source(),
+                &next,
             ));
         }
         Ok(next)
@@ -744,8 +710,8 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         if let Some(c) = self.last.take() {
             return Ok(c);
         }
-        // TODO: add better error handling, this was already covered in another pull
-        // request
+        // TODO: add better error handling, this was already covered in another
+        // pull request
         self.tokens.next().ok_or_else(|| Error::new(vec![]))?
     }
 

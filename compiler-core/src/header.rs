@@ -1,46 +1,52 @@
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor, Function, Structure},
+        UntypedDecl,
+        declaration::{DeclFunc, DeclStruct, DeclVisitor},
         expression::Expr,
         identifier::Identifier,
     },
-    error::{FileDb, Result},
+    context::Context,
+    error::Result,
+    lexer::Source,
     process_file,
-    typing::{self, TypeCell, TypeDef, TypeNames, TypeTree},
+    type_::{
+        Type,
+        environment::{Environment, ModuleInterface, StructInterface},
+        prelude::Typed,
+    },
 };
-use codespan_reporting::term;
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
+use std::{fs, path::PathBuf, sync::Arc};
+use symbol_table::{GlobalSymbol, static_symbol};
 
-pub struct Header {
-    types: TypeTree,
-    scope: TypeNames,
+pub struct Header<'ctx> {
+    context: &'ctx mut Context,
+    module: ModuleInterface,
 }
 
-impl Header {
-    pub fn new() -> Header {
-        Header {
-            types: TypeTree::new(),
-            scope: HashMap::new(),
+impl<'ctx> Header<'ctx> {
+    pub fn new(context: &'ctx mut Context) -> Self {
+        Self {
+            context,
+            // TODO: add real module name
+            module: ModuleInterface::new(static_symbol!("")),
         }
     }
 
-    pub fn headers(mut self, declarations: &[Decl]) -> Result<Header> {
+    pub fn env(mut self, declarations: &[UntypedDecl]) -> Result<Environment> {
         for declaration in declarations {
             self.visit_decl(declaration)?;
         }
-        Ok(self)
-    }
-
-    pub fn analysed(self) -> (TypeTree, TypeNames) {
-        (self.types, self.scope)
+        let module = Arc::new(self.module);
+        self.context.cache_module(module.clone());
+        Ok(Environment::new(self.context.ids().clone(), module))
     }
 }
 
-impl<'a> DeclVisitor<'a> for Header {
+impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
+    type Type = ();
     type Output = Result<()>;
 
-    fn visit_import(&mut self, path: &[Identifier]) -> Self::Output {
+    fn visit_import(&mut self, path: &[Identifier], _: Source) -> Self::Output {
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
@@ -50,74 +56,52 @@ impl<'a> DeclVisitor<'a> for Header {
             filename
         };
         let content = fs::read_to_string(&filename).expect("Expected to open file");
-        let mut files = FileDb::new();
         let display = filename.display();
-        let file_id = files.add(&display, &content);
-        match process_file(file_id, &content) {
-            Ok((_, types, scope)) => {
-                self.types.insert_tree(
-                    path.last().expect("import path not empty").to_string(),
-                    types,
-                );
-                self.scope.extend(scope);
-            }
-            Err(error) => {
-                for diagnostic in error.diagnostics() {
-                    let writer = StandardStream::stderr(ColorChoice::Always);
-                    let config = codespan_reporting::term::Config::default();
+        // TODO: remove clone!
+        let file_id = self.context.store(display.to_string(), content.clone());
+        let (_ast, _env) = process_file(self.context, file_id, &content)?;
 
-                    let _ =
-                        term::emit_to_io_write(&mut writer.lock(), &config, &files, &diagnostic);
-                }
-            }
-        }
+        // TODO: insert module
         Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a Structure) -> Self::Output {
-        let struct_name = structure.name.name().to_string();
-
-        let mut fields = HashMap::new();
+    fn visit_struct(&mut self, structure: &'a DeclStruct, source: Source) -> Self::Output {
+        let mut struct_ = StructInterface::new(structure.name.symbol(), source);
         for (field_name, field_type) in &structure.fields {
-            fields.insert(field_name.name().to_string(), field_type.borrow().clone());
+            struct_.declare_associaten(field_name, field_type.clone())?;
         }
-        self.types.insert_type(
-            struct_name,
-            Rc::new(TypeDef::Struct(typing::Struct {
-                name: vec![structure.name.clone()],
-                fields,
-            })),
-        );
-        Ok(())
+        self.module.declare_type(
+            &structure.name,
+            Arc::new(Type::Named {
+                name: GlobalSymbol::from(structure.name.name()),
+                // TODO: add generics
+                arguments: vec![],
+            }),
+        )?;
+        self.module.declare_struct(struct_)
     }
 
-    fn visit_function(&mut self, func: &'a Function) -> Self::Output {
-        let mut parameters = Vec::new();
-        for (_, param_type) in &func.params {
-            parameters.push(param_type.borrow().clone());
+    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: Source) -> Self::Output {
+        let mut arguments = Vec::new();
+        for (_, type_) in &func.params {
+            arguments.push(type_.clone());
         }
-        self.scope.insert(
-            func.name.name().to_string(),
-            Rc::new(TypeDef::Function(typing::Function {
-                name: vec![
-                    // TODO: add full module path
-                    func.name.clone(),
-                ],
-                parameters,
-                return_type: func.return_type.borrow().clone(),
-            })),
-        );
-        Ok(())
+        self.module.declare_var(
+            &func.name,
+            Arc::new(Type::Fn {
+                arguments,
+                return_: func.return_type.clone(),
+            }),
+        )
     }
 
     fn visit_const(
         &mut self,
         name: &'a Identifier,
-        var_type: &'a TypeCell,
-        _: &Expr,
+        type_: &'a Typed,
+        _: &Expr<Self::Type>,
+        _: Source,
     ) -> Self::Output {
-        self.scope
-            .insert(name.name().to_string(), var_type.borrow().clone());
-        Ok(())
+        self.module.declare_var(name, type_.clone())
     }
 }

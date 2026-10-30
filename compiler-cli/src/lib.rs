@@ -1,20 +1,15 @@
 #![allow(clippy::needless_return)]
 use crate::cli::{ArgsBuilder, HELP_MESSAGE};
-use codespan_reporting::term::{
-    self,
-    termcolor::{ColorChoice, StandardStream},
-};
 use std::{env, fs, path::PathBuf, process::exit};
 use tau_core::{
-    error::FileDb,
+    context::Context,
+    error::DynResult,
     generator::{Compiler, set_output},
     process_file,
 };
 use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
 
 mod cli;
-
-type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
 
 pub fn main() {
     let args = ArgsBuilder::new()
@@ -24,9 +19,10 @@ pub fn main() {
     if args.input().is_empty() {
         println!("{}", HELP_MESSAGE)
     } else {
+        let mut context = Context::new();
         // guaranteed to not be empty
         for filename in args.input() {
-            if let Err(message) = compile_file(filename, &args) {
+            if let Err(message) = compile_file(&mut context, filename, &args) {
                 println!("{:?}", message);
                 exit(2);
             }
@@ -34,15 +30,16 @@ pub fn main() {
     }
 }
 
-fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
+fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynResult {
     let filename = PathBuf::from(filename);
     if let Ok(content) = fs::read_to_string(&filename) {
-        let mut files = FileDb::new();
         let display = filename.display();
-        let file_id = files.add(&display, &content);
-        match process_file(file_id, &content) {
-            Ok((ast, _, _)) => match args.target() {
+        // TODO: remove clone!
+        let file_id = context.store(display.to_string(), content.clone());
+        match process_file(context, file_id, &content) {
+            Ok((ast, _env)) => match args.target() {
                 cli::Target::C => {
+                    // FIXME: resolve types first
                     let compiler = Compiler::new(&ast);
                     let header_output = set_output(filename.as_ref(), args.output(), "h");
                     compiler
@@ -55,16 +52,7 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
                 }
                 cli::Target::Cranelift => unimplemented!(),
             },
-            Err(error) => {
-                for diagnostic in error.diagnostics() {
-                    let writer = StandardStream::stderr(ColorChoice::Always);
-                    let config = codespan_reporting::term::Config::default();
-
-                    term::emit_to_io_write(&mut writer.lock(), &config, &files, &diagnostic)
-                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
-                }
-                Ok(())
-            }
+            Err(error) => context.handle(&error),
         }
     } else {
         println!("tau: cannot access {}: No such file", filename.display());
@@ -74,24 +62,47 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{DynResult, compile_file};
+    use super::{Context, compile_file};
     use crate::cli::ArgsBuilder;
 
-    #[test]
-    fn pipeline_arrays() -> DynResult {
-        let args = ArgsBuilder::new().build();
-        compile_file("../examples/arrays.tau", &args)
+    macro_rules! assert_ok {
+        ($result:expr) => {{
+            let result = &$result;
+            assert!(matches!(result, Ok(_)), "Expected Ok(_), got {:?}", result);
+        }};
+    }
+
+    macro_rules! assert_none {
+        ($result:expr) => {{
+            let result = &$result;
+            assert!(matches!(result, None), "Expected None, got {:?}", result);
+        }};
     }
 
     #[test]
-    fn pipeline_heap() -> DynResult {
+    fn pipeline_arrays() {
         let args = ArgsBuilder::new().build();
-        compile_file("../examples/heap.tau", &args)
+        let mut context = Context::new();
+        let result = compile_file(&mut context, "../examples/arrays.tau", &args);
+        assert_ok!(result);
+        assert_none!(context.severity());
     }
 
     #[test]
-    fn pipeline_vec2() -> DynResult {
+    fn pipeline_heap() {
         let args = ArgsBuilder::new().build();
-        compile_file("../examples/vec2.tau", &args)
+        let mut context = Context::new();
+        let result = compile_file(&mut context, "../examples/heap.tau", &args);
+        assert_ok!(result);
+        assert_none!(context.severity());
+    }
+
+    #[test]
+    fn pipeline_vec2() {
+        let args = ArgsBuilder::new().build();
+        let mut context = Context::new();
+        let result = compile_file(&mut context, "../examples/vec2.tau", &args);
+        assert_ok!(result);
+        assert_none!(context.severity());
     }
 }

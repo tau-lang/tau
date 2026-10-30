@@ -1,4 +1,4 @@
-use crate::lexer::Source;
+use crate::{ast::Location, lexer::Source};
 use std::fmt::{Display, Formatter, Result};
 use symbol_table::GlobalSymbol;
 
@@ -18,17 +18,29 @@ impl Identifier {
         Identifier { name, source }
     }
 
-    pub fn source(&self) -> &Source {
-        &self.source
-    }
-
     pub fn name(&self) -> &str {
         &self.name.as_str()
+    }
+
+    pub fn symbol(&self) -> GlobalSymbol {
+        self.name
+    }
+}
+
+impl Location for Identifier {
+    fn source(&self) -> Source {
+        self.source
     }
 }
 
 impl Display for Identifier {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
         formatter.write_str(&self.name())
+    }
+}
+
+impl From<Identifier> for GlobalSymbol {
+    fn from(value: Identifier) -> GlobalSymbol {
+        value.name
     }
 }

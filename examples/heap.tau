@@ -6,12 +6,12 @@ struct Node {
 struct List {
   head: *Node,
   tail: *Node,
-  len: u64
+  len: i64
 }
 
-extern fn malloc(len: u64) -> *any
+extern fn malloc(len: i64) -> *Node
 
-extern fn free(ptr: *any)
+extern fn free(ptr: *Node)
 
 extern fn puts(text: str)
 
@@ -45,14 +45,14 @@ fn main() {
   let empty: *Node = malloc(0);
 
   let list = List { head=empty, tail=empty, len=0 };
-  let i = 0;
-  while i < 16 {
+  let i = 0.0;
+  while i < 16.0 {
     push(&list, i);
-    i += 1;
+    i += 1.0;
   }
-  while i > 0 {
+  while i > 0.0 {
     puts(f2str(pop(&list)));
-    i -= 1
+    i -= 1.0
   }
 
   puts("this is a placeholder");
