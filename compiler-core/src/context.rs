@@ -1,5 +1,5 @@
 use crate::{
-    error::{DynResult, Error, FileDb, FileId},
+    error::{DynResult, Error, FileCache, FileDb, FileId},
     type_::environment::ModuleInterface,
     uid::UniqueIdGenerator,
 };
@@ -54,7 +54,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn store(&mut self, name: String, source: String) -> FileId {
+    pub fn store(&mut self, name: String, source: FileCache) -> FileId {
         self.files.add(name, source)
     }
 

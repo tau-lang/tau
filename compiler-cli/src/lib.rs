@@ -3,7 +3,7 @@ use crate::cli::{ArgsBuilder, HELP_MESSAGE};
 use std::{env, fs, path::PathBuf, process::exit};
 use tau_core::{
     context::Context,
-    error::DynResult,
+    error::{DynResult, FileCache},
     generator::{Compiler, set_output},
     process_file,
 };
@@ -34,10 +34,10 @@ pub fn main() {
 fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynResult {
     let filename = PathBuf::from(filename);
     if let Ok(content) = fs::read_to_string(&filename) {
+        let cache = FileCache::new(content);
         let display = filename.display();
-        // TODO: remove clone!
-        let file_id = context.store(display.to_string(), content.clone());
-        match process_file(context, file_id, &content) {
+        let file_id = context.store(display.to_string(), cache.clone());
+        match process_file(context, file_id, cache.as_ref()) {
             Ok((ast, _env)) => match args.target() {
                 #[cfg(feature = "c")]
                 cli::Target::C => {

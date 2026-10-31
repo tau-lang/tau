@@ -5,6 +5,7 @@ use codespan_reporting::{
 };
 use std::{
     fmt::{Debug, Display},
+    rc::Rc,
     result,
 };
 
@@ -13,8 +14,24 @@ pub type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
 /// All results throw our error type.
 pub type Result<T> = result::Result<T, Error>;
 
+/// Caches the content of a single file.
+#[derive(Clone, Debug, Default)]
+pub struct FileCache(Rc<String>);
+
+impl FileCache {
+    pub fn new(content: String) -> Self {
+        Self(Rc::new(content))
+    }
+}
+
+impl AsRef<str> for FileCache {
+    fn as_ref(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 /// The file database that we currently use. This may change in the future.
-pub type FileDb = SimpleFiles<String, String>;
+pub type FileDb = SimpleFiles<String, FileCache>;
 pub type FileId = usize; // <FileDb as Files>::FileId
 
 #[derive(PartialEq, Debug)]
