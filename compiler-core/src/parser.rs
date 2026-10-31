@@ -8,16 +8,16 @@ use crate::{
         statement::StmtKind,
     },
     error::{Error, Result, diagnostic, error},
-    lexer::{Token, TokenType},
+    lexer::{Source, Token, TokenType},
     type_::{Type, prelude::*},
 };
 use std::{boxed::Box, iter::Iterator, sync::Arc};
-use symbol_table::{GlobalSymbol, static_symbol};
+use symbol_table::GlobalSymbol;
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 pub struct Parser<I: Iterator<Item = Result<Token>>> {
-    /// The token iterator. This is generelly the Lexer, but by making it
+    /// The token iterator. This is generally the Lexer, but by making it
     /// generic, we allow any type of token iterator.
     tokens: I,
     /// All declaration's that we parsed are added to this collection.
@@ -116,7 +116,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                     self.decl_modifier(
                         start,
                         FuncModifiers {
-                            is_extern: true,
+                            is_io: true,
                             ..modifiers
                         },
                     )
@@ -144,25 +144,23 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        let end = self.consume(&TokenType::ParenRight)?;
+        self.consume(&TokenType::ParenRight)?;
 
         let return_type = if *self.peek()?.token_type() == TokenType::To {
             self.consume(&TokenType::To)?;
             self.decl_type()?
         } else {
-            Arc::new(Type::Named {
-                name: static_symbol!("void"),
-                arguments: vec![],
-            })
+            void()
         };
 
-        let body = if modifiers.is_extern {
-            Default::default()
+        let (body, end) = if modifiers.is_extern {
+            let end = self.consume(&TokenType::Semicolon)?;
+            (Default::default(), end.source())
         } else {
             self.decl_body()?
         };
 
-        let source = start.merge(&end);
+        let source = start.source().merge(end);
         Ok(UntypedDecl::new(
             DeclKind::Func(DeclFunc {
                 name: Identifier::from(name),
@@ -175,16 +173,17 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         ))
     }
 
-    fn decl_body(&mut self) -> Result<Vec<UntypedStmt>> {
+    fn decl_body(&mut self) -> Result<(Vec<UntypedStmt>, Source)> {
         let mut body = Vec::new();
-        if self.peek()?.token_type() == &TokenType::BraceLeft {
-            self.consume(&TokenType::BraceLeft)?;
+        let source = if self.peek()?.token_type() == &TokenType::BraceLeft {
+            let start = self.consume(&TokenType::BraceLeft)?;
             while *self.peek()?.token_type() != TokenType::BraceRight {
                 body.push(self.stmt()?);
             }
-            self.consume(&TokenType::BraceRight)?;
+            let end = self.consume(&TokenType::BraceRight)?;
+            start.merge(&end)
         } else {
-            self.consume(&TokenType::Set)?;
+            let start = self.consume(&TokenType::Set)?;
             if *self.peek()?.token_type() == TokenType::Let {
                 self.advance()?;
                 while *self.peek()?.token_type() != TokenType::In {
@@ -193,10 +192,11 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.consume(&TokenType::In)?;
             }
             let value = self.expr()?;
-            let source = value.source().clone();
+            let source = value.source();
             body.push(UntypedStmt::new(StmtKind::Return { value }, source));
-        }
-        Ok(body)
+            start.source().merge(source)
+        };
+        Ok((body, source))
     }
 
     fn decl_import(&mut self, start: Token) -> Result<UntypedDecl> {
@@ -259,12 +259,20 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 type_: self.decl_type()?,
             })),
             TokenType::BracketLeft => {
-                let type_def = Arc::new(Type::Ptr {
-                    unchecked: false,
-                    type_: self.decl_type()?,
-                });
+                let inner = self.decl_type()?;
+                self.consume(&TokenType::Semicolon)?;
+                let size = self.advance()?;
+                let size = match size.token_type() {
+                    TokenType::Int(size) => *size as usize,
+                    _ => {
+                        return error(diagnostic(
+                            format!("array size type only accepts ints"),
+                            size,
+                        ));
+                    }
+                };
                 self.consume(&TokenType::BracketRight)?;
-                Ok(type_def)
+                Ok(array(inner, size))
             }
             TokenType::Identifier(_) => {
                 // We may add arguments when we support generics. Until then the
@@ -300,22 +308,26 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 let expr = self.expr()?;
                 let end = self.consume(&TokenType::Semicolon)?;
                 let source = start.merge(&end);
-                Ok(UntypedStmt::new(StmtKind::Return { value: expr }, source))
+                Ok(return_(expr, source))
             }
             TokenType::Break => {
-                let current = self.advance()?;
-                let source = current.source().clone();
-                Ok(UntypedStmt::new(StmtKind::Break, source))
+                let start = self.advance()?;
+                let end = self.consume(&TokenType::Semicolon)?;
+                let source = start.merge(&end);
+                Ok(break_(source))
             }
             TokenType::For => self.stmt_for(),
             TokenType::While => self.stmt_while(),
             _ => {
                 let expr = self.expr()?;
-                if *self.peek()?.token_type() == TokenType::Semicolon {
-                    self.advance()?;
-                }
-                let source = expr.source().clone();
-                Ok(UntypedStmt::new(StmtKind::ExprStmt(expr), source))
+                let source = if self.peek()?.token_type() == &TokenType::Semicolon {
+                    let end = self.consume(&TokenType::Semicolon)?;
+                    expr.merge(&end)
+                } else {
+                    // TODO: Add yield keyword
+                    expr.source()
+                };
+                Ok(expr_stmt(expr, source))
             }
         }
     }
@@ -399,7 +411,9 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
     fn stmt_while(&mut self) -> Result<UntypedStmt> {
         let start = self.advance()?;
+        self.consume(&TokenType::ParenLeft)?;
         let condition = self.expr()?;
+        self.consume(&TokenType::ParenRight)?;
         let body = self.stmt_block()?;
         let source = start.merge(&body);
         Ok(UntypedStmt::new(
@@ -621,7 +635,9 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     }
 
     fn expr_if(&mut self, start: Token) -> Result<UntypedExpr> {
+        self.consume(&TokenType::ParenLeft)?;
         let condition = self.expr()?;
+        self.consume(&TokenType::ParenRight)?;
         self.consume(&TokenType::BraceLeft)?;
         let if_branch = self.stmt()?;
         let end = self.consume(&TokenType::BraceRight)?;

@@ -17,7 +17,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub type FileDb = SimpleFiles<String, String>;
 pub type FileId = usize; // <FileDb as Files>::FileId
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Error(Vec<Diagnostic<FileId>>);
 
 impl Error {

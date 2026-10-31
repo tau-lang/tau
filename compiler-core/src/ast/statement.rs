@@ -5,7 +5,7 @@ use crate::{
 };
 use std::{boxed::Box, sync::Arc};
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Stmt<T> {
     kind: StmtKind<T>,
     source: Source,
@@ -27,7 +27,7 @@ impl<T> Location for Stmt<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum StmtKind<T> {
     Block {
         statements: Vec<Stmt<T>>,

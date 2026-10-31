@@ -9,13 +9,13 @@ struct List {
   len: i64
 }
 
-extern fn malloc(len: i64) -> *Node
+extern fn malloc(len: i64) -> *Node;
 
-extern fn free(ptr: *Node)
+extern fn free(ptr: *Node);
 
-extern fn puts(text: str)
+extern fn puts(text: str);
 
-extern fn f2str(num: f64) -> str
+extern fn f2str(num: f64) -> str;
 
 fn node(next: *Node, value: f64) -> *Node {
   let new: *Node = malloc(16);
@@ -46,11 +46,11 @@ fn main() {
 
   let list = List { head=empty, tail=empty, len=0 };
   let i = 0.0;
-  while i < 16.0 {
+  while (i < 16.0) {
     push(&list, i);
     i += 1.0;
   }
-  while i > 0.0 {
+  while (i > 0.0) {
     puts(f2str(pop(&list)));
     i -= 1.0
   }

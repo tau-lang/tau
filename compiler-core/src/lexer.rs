@@ -13,21 +13,23 @@ pub struct Lexer<'a> {
     source: &'a str,
     chars: CharIndices<'a>,
     file_id: FileId,
-    line: usize,
     start: usize,
     last: Option<(usize, char)>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str, file_id: FileId) -> Lexer<'a> {
-        Lexer {
+        let mut lexer = Lexer {
             source: source,
             chars: source.char_indices(),
             file_id,
-            line: 1,
             start: 0,
             last: None,
-        }
+        };
+        // We need to skip leading spaces so that the lexer directly starts at the first
+        // token.
+        lexer.skip_space();
+        lexer
     }
 
     fn scan_token(&mut self) -> Result<Token> {
@@ -121,15 +123,6 @@ impl<'a> Lexer<'a> {
                     TokenType::Low
                 }
             }
-            ' ' | '\r' | '\t' => {
-                self.start = self.chars.offset();
-                return self.scan_token();
-            }
-            '\n' => {
-                self.line += 1;
-                self.start = self.chars.offset();
-                return self.scan_token();
-            }
             '"' => self.string()?,
             _ => {
                 if Lexer::is_digit(c) {
@@ -144,6 +137,9 @@ impl<'a> Lexer<'a> {
                 }
             }
         };
+        // When we call this method again, we expect that is points again at the next
+        // non-space character.
+        self.skip_space();
         Ok(Token::new(token_type, self.source()))
     }
 
@@ -212,10 +208,7 @@ impl<'a> Lexer<'a> {
     fn string(&mut self) -> crate::error::Result<TokenType> {
         self.start = self.chars.offset();
         while !self.is_at_end() && self.peek()? != '"' {
-            let c = self.advance()?;
-            if c == '\n' {
-                self.line += 1;
-            }
+            self.advance()?;
         }
 
         let view = self.view().to_string();
@@ -240,6 +233,14 @@ impl<'a> Lexer<'a> {
         let c = self.advance()?;
         self.last = Some((o, c));
         Ok(c)
+    }
+
+    fn skip_space(&mut self) {
+        while let Ok(c) = self.peek()
+            && matches!(c, ' ' | '\r' | '\t' | '\n')
+        {
+            self.advance().expect("expected token exists");
+        }
     }
 
     fn is_alpha(c: char) -> bool {
@@ -281,7 +282,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn source(&self) -> Source {
-        Source::new(self.file_id, self.start..self.end())
+        Source::new(self.file_id, self.start..self.end() - 1)
     }
 }
 

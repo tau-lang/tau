@@ -3,7 +3,7 @@ use crate::{
     lexer::Source,
 };
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct DeclStruct {
     pub name: Identifier,
     pub fields: Vec<(Identifier, Typed)>,
@@ -20,7 +20,7 @@ impl DeclStruct {
 /// additional functionality to it. Currently only the extern and io modifier
 /// exists. The structure contains a list of modifiers and if they are enabled
 /// or not.
-#[derive(Debug, Default)]
+#[derive(PartialEq, Debug, Default)]
 pub struct FuncModifiers {
     pub is_extern: bool,
     pub is_io: bool,
@@ -37,7 +37,7 @@ impl FuncModifiers {
 /// expression that is returned. A return statement is indicated by the
 /// keyword return followed by any expression, possible empty. All occurences
 /// of a return must return the same type.
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct DeclFunc<T> {
     pub name: Identifier,
     pub return_type: Typed,
@@ -66,7 +66,7 @@ impl<T> DeclFunc<T> {
 
 /// A declaration (short decl) denotes a new definition of an element inside
 /// a tau file.
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Decl<T> {
     kind: DeclKind<T>,
     source: Source,
@@ -89,7 +89,7 @@ impl<T> Location for Decl<T> {
 }
 
 /// Every declaration is either a import, struct, function or constant.
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum DeclKind<T> {
     Import(Vec<Identifier>),
     Struct(DeclStruct),

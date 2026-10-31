@@ -1,6 +1,6 @@
-extern fn sqrt(v: f64) -> f64
+extern fn sqrt(v: f64) -> f64;
 
-extern fn puts(v: str)
+extern fn puts(v: str);
 
 struct Vec2 {
     x: f64,
@@ -24,7 +24,7 @@ fn length(v: Vec2) -> f64 =
 fn norm(v: Vec2) -> Vec2 =
     let len = length(v);
     in
-        if len == 0.0 { ZERO }
+        if (len == 0.0) { ZERO }
         else { vec2(v.x / len, v.y / len) }
 
 io fn main() {

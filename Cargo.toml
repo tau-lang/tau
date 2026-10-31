@@ -5,4 +5,5 @@ members = [
   "compiler-core",
   "generator-c",
   "tau-bin",
+  "test-core",
 ]

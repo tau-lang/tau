@@ -1,13 +1,13 @@
-extern fn println(data: str)
+extern fn println(data: str);
 
-extern fn itos(input: i64) -> str
+extern fn itos(input: i64) -> str;
 
 fn plus1(i: i64) -> i64 = i + 1
 
 io fn main() {
     let a = [i64; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     let i = 0;
-    while i < 16 {
+    while (i < 16) {
         a[i] = i;
         i = plus1(i);
     }

@@ -9,7 +9,7 @@ use crate::{
 };
 use std::boxed::Box;
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Expr<T> {
     kind: ExprKind<T>,
 }
@@ -70,7 +70,7 @@ impl<T> Location for Expr<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum ExprKind<T> {
     Unary {
         // -right

@@ -1,7 +1,7 @@
 use crate::{ast::Location, lexer::Source};
 use std::fmt::{self, Debug};
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum BinaryOp {
     // (number -> number) -> number
     Add,
@@ -32,7 +32,7 @@ pub enum BinaryOp {
     Or,
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum UnaryOp {
     // number -> number
     Neg,
@@ -47,7 +47,7 @@ pub enum UnaryOp {
     Deref,
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Literal {
     Bool(bool),
     Int(i64),
@@ -73,6 +73,15 @@ impl<O> ExprOrigin<O> {
 impl<O> Location for ExprOrigin<O> {
     fn source(&self) -> Source {
         self.source
+    }
+}
+
+impl<O> PartialEq for ExprOrigin<O>
+where
+    O: PartialEq,
+{
+    fn eq(&self, other: &ExprOrigin<O>) -> bool {
+        &self.kind == &other.kind && &self.source == &other.source
     }
 }
 
