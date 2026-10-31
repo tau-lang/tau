@@ -1,21 +1,39 @@
-.\" Manpage for ochtendzon
-.TH TAU 1 "18 Nov 2025" "0.1.0"
-
-.SH NAME
-tau \- Compiler for the Tau language.
-
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH tau 1 31\ Oct\ 2026 tau-lang tau
 .SH SYNOPSIS
-.B tau
-[\fIFILE\fR]...
+\fBtau\fP\fR \fP\fR[\fP\fB\-\-out\-dir\fP\fR=\fP\fIDIR\fP\fR] [\fP\fB\-o\fP\fR=\fP\fIFILENAME\fP\fR] [\fP\fB\-\-crate\-name\fP\fR=\fP\fINAME\fP\fR] [\fP\fB\-C\fP\fR=\fP\fIGEN\fP\fR] \fP\fIPATH\fP
+.PP
+.SS AVAILABLE\ OPTIONS:
+.TP
+\fB    \-\-out\-dir\fP\fR=\fP\fIDIR\fP
+\fRWrite output to compiler\-chosen filename in DIR\fP
+.PP
+.TP
+\fB\-o\fP\fR, \fP\fB\-\-output\fP\fR=\fP\fIFILENAME\fP
+\fRWrite output to FILENAME\fP
+.PP
+.TP
+\fB    \-\-crate\-name\fP\fR=\fP\fINAME\fP
+\fRSpecify the NAME of the crate being built\fP
+.PP
+.TP
+\fB\-C\fP\fR, \fP\fB\-\-codegen\fP\fR=\fP\fIGEN\fP
+\fRSet the code generator\fP
+.PP
+.TP
+\fB\-h\fP\fR, \fP\fB\-\-help\fP
+\fRPrints help information\fP
+.PP
 
 .SH DESCRIPTION
-The \fBtau\fR command takes a single Tau files and compiles it to the default target (e.g. C++).
+The \fBtau\fR command takes a single Tau files and compiles it to target (e.g. C).
 
 .SH EXAMPLES
 tau example/main.tau
 
 .SH REPORTING BUGS
-You can report a bugs on GitHub <https://github.com/tau-lang/tau/issues>
+You can report bugs on Codeberg <https://codeberg.org/tau-lang/tau/issues>
 
 .SH SEE ALSO
 ochtendzon(1)

@@ -14,3 +14,4 @@ c = ["dep:tau-generator-c"]
 tau-core = { path = "../compiler-core" }
 tau-generator-c = { path = "../generator-c", optional = true }
 codespan-reporting = "0.13.1"
+bpaf = { version = "0.9.28", features = ["autocomplete", "derive"] }

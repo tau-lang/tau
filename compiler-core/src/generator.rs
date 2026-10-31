@@ -1,14 +1,9 @@
 use crate::{ast::TypedDecl, error::Error};
 use std::path::{Path, PathBuf};
 
-pub fn set_output(path: &Path, folder: &Path, extension: &str) -> PathBuf {
-    let mut path_buf = if folder.as_os_str().is_empty() {
-        PathBuf::from(path)
-    } else {
-        let mut path_buf = PathBuf::from(folder);
-        path_buf.push(PathBuf::from(path).file_name().expect("path is a file"));
-        path_buf
-    };
+pub fn output(path: &Path, folder: &Path, extension: &str) -> PathBuf {
+    let mut path_buf = PathBuf::from(folder);
+    path_buf.push(path);
     path_buf.set_extension(extension);
     return path_buf;
 }
