@@ -7,6 +7,7 @@ use tau_core::{
     generator::{Compiler, set_output},
     process_file,
 };
+#[cfg(feature = "c")]
 use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
 
 mod cli;
@@ -38,8 +39,8 @@ fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynR
         let file_id = context.store(display.to_string(), content.clone());
         match process_file(context, file_id, &content) {
             Ok((ast, _env)) => match args.target() {
+                #[cfg(feature = "c")]
                 cli::Target::C => {
-                    // FIXME: resolve types first
                     let compiler = Compiler::new(&ast);
                     let header_output = set_output(filename.as_ref(), args.output(), "h");
                     compiler

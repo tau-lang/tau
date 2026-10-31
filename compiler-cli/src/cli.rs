@@ -5,11 +5,22 @@ use std::{
     vec::IntoIter,
 };
 
-#[derive(Default)]
 pub enum Target {
-    #[default]
+    #[cfg(feature = "c")]
     C,
     Cranelift,
+}
+
+impl Default for Target {
+    #[cfg(feature = "c")]
+    fn default() -> Self {
+        Self::C
+    }
+
+    #[cfg(not(feature = "c"))]
+    fn default() -> Self {
+        Self::Cranelift
+    }
 }
 
 impl TryFrom<String> for Target {
@@ -17,6 +28,7 @@ impl TryFrom<String> for Target {
 
     fn try_from(string: String) -> Result<Self, Self::Error> {
         match string.as_str() {
+            #[cfg(feature = "c")]
             "c" => Ok(Self::C),
             "cranelift" => Ok(Self::Cranelift),
             _ => Err(format!("Could not convert {string} to target")),

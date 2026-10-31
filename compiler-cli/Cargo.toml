@@ -5,8 +5,12 @@ authors = ["Karl Zschiebsch"]
 edition = "2024"
 license = "Apache-2.0"
 
+[features]
+default = ["c"]
+c = ["dep:tau-generator-c"]
+
 [dependencies]
 # The pure compiler
 tau-core = { path = "../compiler-core" }
-tau-generator-c = { path = "../generator-c" }
+tau-generator-c = { path = "../generator-c", optional = true }
 codespan-reporting = "0.13.1"
