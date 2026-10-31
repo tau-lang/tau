@@ -10,7 +10,7 @@ use tau_core::{
 #[cfg(feature = "c")]
 use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
 
-mod cli;
+pub mod cli;
 
 pub fn main() {
     let args = ArgsBuilder::new()
@@ -31,7 +31,7 @@ pub fn main() {
     }
 }
 
-fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynResult {
+pub fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynResult {
     let filename = PathBuf::from(filename);
     if let Ok(content) = fs::read_to_string(&filename) {
         let cache = FileCache::new(content);
@@ -58,52 +58,5 @@ fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynR
     } else {
         println!("tau: cannot access {}: No such file", filename.display());
         exit(1);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Context, compile_file};
-    use crate::cli::ArgsBuilder;
-
-    macro_rules! assert_ok {
-        ($result:expr) => {{
-            let result = &$result;
-            assert!(matches!(result, Ok(_)), "Expected Ok(_), got {:?}", result);
-        }};
-    }
-
-    macro_rules! assert_none {
-        ($result:expr) => {{
-            let result = &$result;
-            assert!(matches!(result, None), "Expected None, got {:?}", result);
-        }};
-    }
-
-    #[test]
-    fn pipeline_arrays() {
-        let args = ArgsBuilder::new().build();
-        let mut context = Context::new();
-        let result = compile_file(&mut context, "../examples/arrays.tau", &args);
-        assert_ok!(result);
-        assert_none!(context.severity());
-    }
-
-    #[test]
-    fn pipeline_heap() {
-        let args = ArgsBuilder::new().build();
-        let mut context = Context::new();
-        let result = compile_file(&mut context, "../examples/heap.tau", &args);
-        assert_ok!(result);
-        assert_none!(context.severity());
-    }
-
-    #[test]
-    fn pipeline_vec2() {
-        let args = ArgsBuilder::new().build();
-        let mut context = Context::new();
-        let result = compile_file(&mut context, "../examples/vec2.tau", &args);
-        assert_ok!(result);
-        assert_none!(context.severity());
     }
 }

@@ -1,0 +1,9 @@
+[package]
+name = "test-cli"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+tau-cli = { path = "../compiler-cli" }
+tau-core = { path = "../compiler-core" }

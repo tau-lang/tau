@@ -159,6 +159,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cli"
+version = "0.1.0"
+dependencies = [
+ "tau-cli",
+ "tau-core",
+]
+
+[[package]]
 name = "test-core"
 version = "0.1.0"
 dependencies = [
