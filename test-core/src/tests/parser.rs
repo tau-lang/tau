@@ -13,6 +13,7 @@ use tau_core::{
     parser::Parser,
     type_::prelude::*,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn parses_from_lexer() {
@@ -45,11 +46,11 @@ fn parses_from_lexer() {
                 Identifier::new(static_symbol!("Structure"), Source::new(file_id, 10..19)),
                 vec![
                     (
-                        Identifier::new(static_symbol!("ptr"), Source::new(file_id, 26..28)),
+                        Identifier::new(static_symbol!("ptr"), Source::new(file_id, 26..29)),
                         ptr(named(static_symbol!("Structure"), vec![]), true),
                     ),
                     (
-                        Identifier::new(static_symbol!("array"), Source::new(file_id, 47..51)),
+                        Identifier::new(static_symbol!("array"), Source::new(file_id, 47..52)),
                         array(
                             array(array(named(static_symbol!("Structure"), vec![]), 3), 3),
                             3,
@@ -57,29 +58,29 @@ fn parses_from_lexer() {
                     ),
                 ],
             ),
-            Source::new(file_id, 3..86),
+            Source::new(file_id, 3..83),
         ),
         func(
             FuncDecl::new(
-                Identifier::new(static_symbol!("modifiers"), Source::new(file_id, 100..108)),
+                Identifier::new(static_symbol!("modifiers"), Source::new(file_id, 100..109)),
                 void(),
                 vec![],
                 vec![],
                 FuncModifiers::new(true, true),
             ),
-            Source::new(file_id, 87..117),
+            Source::new(file_id, 87..112),
         ),
         func(
             FuncDecl::new(
-                Identifier::new(static_symbol!("keywords"), Source::new(file_id, 121..128)),
+                Identifier::new(static_symbol!("keywords"), Source::new(file_id, 121..129)),
                 named(static_symbol!("T3"), vec![]),
                 vec![
                     (
-                        Identifier::new(static_symbol!("p1"), Source::new(file_id, 130..131)),
+                        Identifier::new(static_symbol!("p1"), Source::new(file_id, 130..132)),
                         named(static_symbol!("T1"), vec![]),
                     ),
                     (
-                        Identifier::new(static_symbol!("p2"), Source::new(file_id, 138..139)),
+                        Identifier::new(static_symbol!("p2"), Source::new(file_id, 138..140)),
                         named(static_symbol!("T2"), vec![]),
                     ),
                 ],
@@ -88,17 +89,17 @@ fn parses_from_lexer() {
                         Identifier::new(static_symbol!("a"), Source::new(file_id, 162..163)),
                         None,
                         literal(
-                            Origin::new(Literal::Bool(true), Source::new(file_id, 166..169)),
+                            Origin::new(Literal::Bool(true), Source::new(file_id, 166..170)),
                             (),
                         ),
-                        Source::new(file_id, 158..169),
+                        Source::new(file_id, 158..170),
                     ),
                     while_(
                         variable(
                             VarLookup::new(
                                 Identifier::new(
                                     static_symbol!("a"),
-                                    Source::new(file_id, 182..182),
+                                    Source::new(file_id, 182..183),
                                 ),
                                 Lookup::Unqualified,
                             ),
@@ -109,33 +110,33 @@ fn parses_from_lexer() {
                                 VarLookup::new(
                                     Identifier::new(
                                         static_symbol!("a"),
-                                        Source::new(file_id, 196..196),
+                                        Source::new(file_id, 196..197),
                                     ),
                                     Lookup::Unqualified,
                                 ),
                                 (),
                             ),
-                            vec![break_(Source::new(file_id, 209..221))],
+                            vec![break_(Source::new(file_id, 209..215))],
                             Some(vec![return_(
                                 Some(call(
                                     CallLookup::unqualified(Identifier::new(
                                         static_symbol!("call"),
-                                        Source::new(file_id, 246..249),
+                                        Source::new(file_id, 246..250),
                                     )),
                                     vec![],
-                                    Source::new(file_id, 246..251),
+                                    Source::new(file_id, 246..252),
                                     (),
                                 )),
-                                Source::new(file_id, 239..259),
+                                Source::new(file_id, 239..253),
                             )]),
-                            Source::new(file_id, 193..265),
+                            Source::new(file_id, 193..261),
                         )],
-                        Source::new(file_id, 176..269),
+                        Source::new(file_id, 176..267),
                     ),
                 ],
                 FuncModifiers::new(false, false),
             ),
-            Source::new(file_id, 118..273),
+            Source::new(file_id, 118..271),
         ),
     ];
     assert_eq!(ast.unwrap(), expected)

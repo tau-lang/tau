@@ -45,7 +45,7 @@ impl From<&Type> for CSourceCode {
                 "f64" => "double",
                 other => other,
             }),
-            Type::Var { type_ } => return CSourceCode::from(&*type_.borrow()),
+            Type::Var { type_: lock } => return CSourceCode::from(&*lock.read().unwrap()),
             Type::Array { type_, size } => {
                 format!("{}[{}]", CSourceCode::from(type_.as_ref()), size)
             }

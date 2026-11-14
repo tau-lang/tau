@@ -1,5 +1,5 @@
 use crate::type_::{Type, TypeVar};
-use std::{cell::RefCell, sync::Arc};
+use std::sync::{Arc, RwLock};
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub type Untyped = ();
@@ -29,20 +29,12 @@ pub fn i8() -> Typed {
     native(static_symbol!("i8"))
 }
 
+pub fn usize() -> Typed {
+    native(static_symbol!("usize"))
+}
+
 pub fn void() -> Typed {
     native(static_symbol!("void"))
-}
-
-/// Any int literal of unknown size.
-pub fn int() -> Typed {
-    // TODO: return an unsized int
-    native(static_symbol!("i64"))
-}
-
-/// Any float literal of unknown size.
-pub fn float() -> Typed {
-    // TODO: return an unsized float
-    native(static_symbol!("f64"))
 }
 
 pub fn str() -> Typed {
@@ -62,18 +54,18 @@ pub fn array(inner: Typed, size: usize) -> Typed {
 
 pub fn generic_var(id: u64) -> Arc<Type> {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Generic { id })),
+        type_: Arc::new(RwLock::new(TypeVar::Generic { id })),
     })
 }
 
 pub fn unbound_var(id: u64) -> Arc<Type> {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Unbound { id })),
+        type_: Arc::new(RwLock::new(TypeVar::Unbound { id })),
     })
 }
 
 pub fn link(type_: Arc<Type>) -> Arc<Type> {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Link { type_ })),
+        type_: Arc::new(RwLock::new(TypeVar::Link { type_ })),
     })
 }

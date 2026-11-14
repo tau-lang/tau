@@ -7,4 +7,4 @@ license-file = "../LICENSE"
 [dev-dependencies]
 tau-lang-core = { workspace = true }
 pretty_assertions = { workspace = true }
-symbol_table = "0.5.0"
+symbol_table = { workspace = true }

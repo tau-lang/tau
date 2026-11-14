@@ -6,7 +6,7 @@ use crate::{
         expression::Expr,
         fold_vec,
         prelude::*,
-        statement::StmtFolder,
+        statement::{StmtFolder, StmtVisitor},
     },
     error::Result,
     lexer::Source,
@@ -33,7 +33,11 @@ impl<'a> DeclFolder for SemanticAnalyzer<'a> {
         for (name, type_) in &params {
             self.environment.declare_var(name, type_.clone())?
         }
+        self.environment.set_return_type(return_type.clone());
         let body = fold_vec(body, |stmt| self.fold_stmt(stmt))?;
+        for stmt in &body {
+            self.visit_stmt(stmt)?;
+        }
         self.environment.end_scope();
         Ok(func(
             FuncDecl::new(name, return_type, params, body, modifiers),

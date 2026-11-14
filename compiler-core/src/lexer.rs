@@ -44,6 +44,7 @@ impl<'a> Lexer<'a> {
     /// parse a token. This may happen because a string literal was not
     /// terminated or a float literal contained two dots.
     fn scan_token(&mut self) -> Result<Token> {
+        self.start = self.end();
         let c = self
             .advance()
             .ok_or_else(|| Error::new(diagnostic("expected token, found eof", self.source())))?;
@@ -156,10 +157,11 @@ impl<'a> Lexer<'a> {
                 }
             }
         };
+        let source = self.source();
         // When we call this method again, we expect that is points again at the
         // next non-space character.
         self.skip_space();
-        Ok(Token::new(token_type, self.source()))
+        Ok(Token::new(token_type, source))
     }
 
     fn identifier(&mut self) -> TokenType {
@@ -297,7 +299,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn source(&self) -> Source {
-        Source::new(self.file_id, self.start..self.end() - 1)
+        Source::new(self.file_id, self.start..self.end())
     }
 }
 

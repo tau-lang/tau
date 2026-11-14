@@ -193,6 +193,9 @@ pub struct Environment {
 
     /// Values defined in the current function
     scopes: Vec<Scope>,
+
+    /// Return type of the current function
+    return_type: Typed,
 }
 
 impl Environment {
@@ -201,6 +204,7 @@ impl Environment {
             ids,
             module,
             scopes: Vec::new(),
+            return_type: void(),
         }
     }
 
@@ -273,6 +277,14 @@ impl Environment {
 
     pub fn new_unbound_var(&mut self) -> Typed {
         unbound_var(self.ids.next())
+    }
+
+    pub fn return_type(&self) -> &Typed {
+        &self.return_type
+    }
+
+    pub fn set_return_type(&mut self, type_: Typed) {
+        self.return_type = type_;
     }
 }
 
