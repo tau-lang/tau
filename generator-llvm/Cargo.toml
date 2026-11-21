@@ -14,4 +14,9 @@ keywords = ["tau-lang", "llvm"]
 [dependencies]
 tau-lang-core = { workspace = true }
 symbol_table = { workspace = true }
-inkwell = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+inkwell = { workspace = true, features = ["target-x86"] }
+
+[target.'cfg(not(windows))'.dependencies]
+inkwell = { workspace = true, features = ["target-all"] }
