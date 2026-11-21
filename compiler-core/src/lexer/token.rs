@@ -74,7 +74,7 @@ pub enum TokenType {
 
     // Literal
     Bool(bool),
-    Int(i64),
+    Int(u64),
     Float(f64),
     String(String),
 

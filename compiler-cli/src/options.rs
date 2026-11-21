@@ -2,7 +2,7 @@
 //! The documentation for the CLI is automatically generated inside the
 //! `test-cli` package.
 
-use crate::code_gen::CodeGen;
+use crate::{code_gen::CodeGen, emit_type::EmitList};
 use bpaf::*;
 use std::{env, io, path::PathBuf};
 use symbol_table::{GlobalSymbol, static_symbol};
@@ -49,6 +49,12 @@ pub struct Options {
         fallback(CodeGen::default())
     )]
     pub code_gen: CodeGen,
+    #[bpaf(
+        long("emit"),
+        help("Comma separeted list of types of output for the compiler to emit."),
+        fallback(EmitList::default())
+    )]
+    pub emit: EmitList,
     #[bpaf(positional("PATH"), complete_shell(ShellComp::File { mask: Some("*.tau") }))]
     pub input: PathBuf,
 }
@@ -60,6 +66,7 @@ impl Options {
         output: Option<PathBuf>,
         crate_name: GlobalSymbol,
         module_name: Option<GlobalSymbol>,
+        emit: EmitList,
         code_gen: CodeGen,
     ) -> Self {
         Self {
@@ -68,6 +75,7 @@ impl Options {
             output,
             crate_name,
             module_name,
+            emit,
             code_gen,
         }
     }
@@ -104,6 +112,10 @@ impl Options {
         })
     }
 
+    pub fn emit(&self) -> &EmitList {
+        &self.emit
+    }
+
     /// Returns the module name, defaults to QBE if enabled, otherwise to
     /// Cranelift.
     pub fn code_gen(&self) -> &CodeGen {
@@ -119,6 +131,7 @@ impl Default for Options {
             output: Default::default(),
             crate_name: static_symbol!(""),
             module_name: Default::default(),
+            emit: Default::default(),
             code_gen: Default::default(),
         }
     }

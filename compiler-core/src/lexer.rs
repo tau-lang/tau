@@ -93,6 +93,7 @@ impl<'a> Lexer<'a> {
                     while self.is_non_empty() && self.peek().unwrap() != '\n' {
                         self.advance();
                     }
+                    self.skip_space();
                     return self.scan_token();
                 } else if self.matchc('=') {
                     TokenType::SetDiv
@@ -230,7 +231,11 @@ impl<'a> Lexer<'a> {
             self.advance();
         }
 
-        let view = self.view().to_string();
+        let view = self
+            .view()
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace("\\\"", "\"");
         // The enclosing ".
         self.advance()
             .ok_or_else(|| Error::new(diagnostic("unclosed string literal", self.source())))?;

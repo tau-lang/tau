@@ -35,19 +35,28 @@
           inherit system;
           overlays = [(import rust-overlay)];
         };
-        bi = with pkgs; [
+        buildInputs = with pkgs; [
           openssl
           pkg-config
           # rust-bin.stable.latest.default
           # nightly is required for formatting comments
           rust-bin.nightly.latest.default
           rust-analyzer
+          # required by llvm
+          libffi
+          libxml2
+          zlib
+        ];
+        dependencies = with pkgs; [
+          pkg-config
+          # current llvm version for generator llvm
+          llvm_22
         ];
         devDependencies = with pkgs; [
           bacon
           sccache
           perf
-          nixfmt-rfc-style
+          nixfmt
         ];
       in
         with pkgs; {
@@ -56,7 +65,7 @@
             rustfmt.enable = true;
           };
           devShells.default = pkgs.mkShell {
-            buildInputs = bi ++ devDependencies;
+            buildInputs = buildInputs ++ dependencies ++ devDependencies;
             shellHook = ''
               ${config.pre-commit.installationScript}
             '';
@@ -70,8 +79,8 @@
               src = ./.;
               cargoLock.lockFile = ./Cargo.lock;
               checkType = "debug";
-              nativeBuildInputs = [pkgs.pkg-config];
-              buildInputs = bi;
+              nativeBuildInputs = dependencies;
+              buildInputs = buildInputs;
             };
 
             tau-manpages = pkgs.stdenv.mkDerivation {

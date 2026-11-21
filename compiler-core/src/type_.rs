@@ -426,6 +426,21 @@ pub fn unify(unified: Typed, expected: Typed) -> Result<(), Diagnostic<FileId>> 
                 type_: expected, ..
             },
         ) => unify(unified.clone(), expected.clone()),
+        (
+            Type::Array {
+                type_: unified,
+                size: size1,
+            },
+            Type::Array {
+                type_: expected,
+                size: size2,
+            },
+        ) => {
+            if size1 != size2 {
+                return Err(Diagnostic::error().with_message("arrays don't have the same size"));
+            }
+            unify(unified.clone(), expected.clone())
+        }
 
         _ => {
             Err(Diagnostic::error().with_message(format!("expected {}, got {}", unified, expected)))

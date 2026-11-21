@@ -2,28 +2,17 @@ use std::str::FromStr;
 
 /// Codegen options that the CLI supports for generating code.
 /// The generator can be changed by passing the `-C` flag.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum CodeGen {
     /// Transpiler for generating C code
     #[cfg(feature = "c")]
     C,
-    /// Cranelift <https://cranelift.dev/>
-    Cranelift,
+    #[default]
+    /// Llvm
+    Llvm,
     /// QBE <https://c9x.me/compile/>
     #[cfg(feature = "qbe")]
     Qbe,
-}
-
-impl Default for CodeGen {
-    #[cfg(feature = "qbe")]
-    fn default() -> Self {
-        Self::Qbe
-    }
-
-    #[cfg(not(feature = "qbe"))]
-    fn default() -> Self {
-        Self::Cranelift
-    }
 }
 
 impl FromStr for CodeGen {
@@ -33,11 +22,11 @@ impl FromStr for CodeGen {
         match string.to_lowercase().as_str() {
             #[cfg(feature = "c")]
             "c" => Ok(Self::C),
-            "cranelift" => Ok(Self::Cranelift),
+            "llvm" => Ok(Self::Llvm),
             #[cfg(feature = "qbe")]
             "qbe" => Ok(Self::Qbe),
             option => Err(format!(
-                "`{option}` doesn't exist, did you mean c, cranelift or qbe?"
+                "`{option}` doesn't exist, did you mean llvm, c, or qbe?"
             )),
         }
     }

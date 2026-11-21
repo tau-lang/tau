@@ -1,6 +1,17 @@
+//! This example shows simple math with vectors.
+//! To compile and run this script:
+//!
+//! ```sh
+//! tau vec2.tau
+//! gcc -o vec2 vec2.o utils.c -lm
+//! ./vec2
+//! ```
+
 extern fn sqrt(v: f64) -> f64;
 
 extern fn puts(v: str) -> i32;
+
+extern fn print_f64(format: str, value: f64) -> i32;
 
 struct Vec2 {
     x: f64,
@@ -17,7 +28,7 @@ fn sub(l: Vec2, r: Vec2) -> Vec2 =
     vec2(l.x - r.x, l.y - r.y)
 
 fn length(v: Vec2) -> f64 =
-    sqrt(v.x*v.x + v.y*v.y)
+    sqrt(v.x * v.x + v.y * v.y)
 
 fn norm(v: Vec2) -> Vec2 =
     let len = length(v);
@@ -25,14 +36,19 @@ fn norm(v: Vec2) -> Vec2 =
         if (len == 0.0) { vec2(0.0, 0.0) }
         else { vec2(v.x / len, v.y / len) }
 
-io fn main() -> i32 {
-    let len = length(add(vec2(3.0, 4.0), vec2(4.0, -2.0)));
-    if (len > 0.0) {
-        puts("vector len is positive");
-    } else if (len < 0.0) {
-        puts("vector is the zero vector")
-    } else {
-        puts("vector len should always be >= 0")
-    }
+fn print(v: Vec2) {
+    print_f64("Vec { x=%f, ", v.x);
+    print_f64("y=%f }\n", v.y);
+}
+
+fn main() -> i32 {
+    let v1 = vec2(3.0, 4.0);
+    print(v1);
+    let v2 = vec2(4.0, -2.0);
+    print(v2);
+    let v3 = add(v1, v2);
+    print(v3);
+    print_f64("Vector has length %f.\n", length(v3));
+    
     return 0;
 }

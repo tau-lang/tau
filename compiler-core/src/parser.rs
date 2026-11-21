@@ -451,13 +451,23 @@ where
         ))
     }
 
+    /// Parses a single for statement. A for statement is of the form:
+    ///
+    /// ```text
+    /// `for` `(` initialiser `;` condition `;` increment `)` `{`
+    ///     body
+    /// `}`
+    /// ```
+    ///
+    /// This is syntatic sugar for a while loop.
     fn stmt_for(&mut self) -> Result<UntypedStmt> {
         let start = self.advance()?;
-        let initializer = self.stmt()?;
-        self.consume(&TokenType::Semicolon)?;
+        self.consume(&TokenType::ParenLeft)?;
+        let initializer = self.stmt_let(true)?;
         let condition = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
+        self.consume(&TokenType::ParenRight)?;
 
         self.consume(&TokenType::BraceLeft)?;
         let mut body = self.stmt_list()?;

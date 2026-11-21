@@ -171,7 +171,7 @@ impl QbeEmitter {
             }
             type_::Type::Var { type_ } => match &*type_.read().unwrap() {
                 type_::TypeVar::Unbound { .. } | type_::TypeVar::Generic { .. } => panic!(),
-                type_::TypeVar::Link { type_ } => self.emit_type(&type_),
+                type_::TypeVar::Link { type_ } => self.emit_type(type_),
             },
         }
     }

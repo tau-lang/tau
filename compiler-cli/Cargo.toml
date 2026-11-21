@@ -25,6 +25,8 @@ dull-color = ["bpaf/dull-color"]
 tau-lang-core = { workspace = true }
 tau-generator-c = { workspace = true, optional = true }
 tau-generator-qbe = { workspace = true, optional = true }
+tau-generator-llvm = { workspace = true }
 codespan-reporting = { workspace = true }
+inkwell = { workspace = true }
 symbol_table = { workspace = true }
 bpaf = { version = "0.9.28", features = ["autocomplete", "derive"] }

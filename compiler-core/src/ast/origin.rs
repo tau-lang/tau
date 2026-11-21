@@ -50,7 +50,7 @@ pub enum UnaryOp {
 #[derive(PartialEq, Debug)]
 pub enum Literal {
     Bool(bool),
-    Int(i64),
+    Int(u64),
     Float(f64),
     String(String),
 }

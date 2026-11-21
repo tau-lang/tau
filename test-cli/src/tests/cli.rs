@@ -14,7 +14,6 @@ fn pipeline_arrays() {
     assert_none!(context.severity());
 }
 
-#[ignore]
 #[test]
 fn pipeline_heap() {
     let options = Options {

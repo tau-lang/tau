@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Location, UntypedExpr,
+        Location, Unfold, UntypedExpr,
         identifier::Identifier,
         lookup::{CallLookup, VarLookup},
         origin::{BinaryOp, Literal, Origin, UnaryOp},
@@ -22,6 +22,14 @@ impl<T> Expr<T> {
 
     pub fn kind(&self) -> &ExprKind<T> {
         &self.kind
+    }
+}
+
+impl<T> Unfold for Expr<T> {
+    type Unfolded = ExprKind<T>;
+
+    fn unfold(self) -> Self::Unfolded {
+        self.kind
     }
 }
 

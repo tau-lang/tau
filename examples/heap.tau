@@ -1,3 +1,13 @@
+//! This example shows advanced usage like heap allocation and pointers. The
+//! example implements a stack as a linked list with push and pop operations.
+//! To compile and run this script:
+//!
+//! ```sh
+//! tau heap.tau
+//! gcc -o heap heap.o utils.c
+//! ./heap
+//! ```
+
 struct Node {
   next: *Node,
   value: f64
@@ -6,17 +16,34 @@ struct Node {
 struct List {
   head: *Node,
   tail: *Node,
-  len: i64
+  len: usize
 }
 
 extern fn malloc(len: i64) -> *Node;
 
 extern fn free(ptr: *Node);
 
-extern fn puts(text: str);
+extern fn puts(text: str) -> i32;
 
-extern fn f2str(num: f64) -> str;
+extern fn print_usize(format: str, value: usize) -> i32;
+extern fn print_f64(format: str, value: f64) -> i32;
 
+fn dbg(format: str, value: f64) -> f64 {
+  print_f64(format, value);
+  puts("");
+  return value;
+}
+
+/// Creates a new list with no head and len 0.
+fn new() -> List =
+  let
+    // Tau has (not yet) any null pointers
+    empty: *Node = malloc(0);
+    len: usize = 0;
+  in
+    List { head=empty, tail=empty, len=len }
+
+/// Creates a new node with the given value on the heap.
 fn node(next: *Node, value: f64) -> *Node {
   let new: *Node = malloc(16);
   (*new).next = next;
@@ -24,36 +51,69 @@ fn node(next: *Node, value: f64) -> *Node {
   return new;
 }
 
+/// Destroys all nodes recursivly.
+fn destroy_all(node: *Node, len: usize) {
+  if (len != 0) {
+    let next = *node.next;
+    free(node);
+    destroy_all(next, len - 1);
+  }
+}
+
+/// Adds the value to the front of the list.
 fn push(list: *List, e: f64) {
-  let new = node(*list.head, e);
+  let new = node(*list.head, dbg("push %f", e));
   *list.head = new;
   *list.len += 1;
 }
 
+/// Removes and returns the first element.
 fn pop(list: *List) -> f64 {
   let cur = *list.head;
   let val = peek(list);
   *list.head = *(*list.head).next;
+  *list.len -= 1;
   free(cur);
-  return val;
+  return dbg("pop %f", val);
 }
 
+/// Returns the value of the first element without removing it.
 fn peek(list: *List) -> f64 =
   *(*list.head).value
 
+/// Prints the list. Because the list is implemented as a stack, the last added
+/// element is displayed first.
+fn print_list(list: *List) {
+  let node = *list.head;
+  let len = *list.len;
+  if (len > 0) {
+    print_f64("[%f", *node.value);
+    for (i: usize = 1; i < len; i += 1) {
+      node = *node.next;    
+      print_f64(", %f", *node.value);
+    }
+    puts("]");
+  } else {
+    puts("[]");
+  }
+}
+
 fn main() {
-  let empty: *Node = malloc(0);
+  let list = new();
+  print_list(&list);
 
-  let list = List { head=empty, tail=empty, len=0 };
-  let i = 0.0;
-  while (i < 16.0) {
-    push(&list, i);
-    i += 1.0;
-  }
-  while (i > 0.0) {
-    puts(f2str(pop(&list)));
-    i -= 1.0
-  }
+  push(&list, 1.0);
+  push(&list, 4.0);
+  push(&list, 5.0);
+  print_list(&list);
 
-  puts("this is a placeholder");
+  pop(&list);
+  push(&list, 3.0);
+  push(&list, 2.0);
+  pop(&list);
+  print_list(&list);
+
+  print_usize("list has len %d.\n", list.len);
+
+  destroy_all(list.head, list.len);
 }

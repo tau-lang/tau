@@ -2,7 +2,7 @@
 .el .ds Aq '
 .TH tau 1 6\ Nov\ 2026 tau-lang tau
 .SH SYNOPSIS
-\fBtau\fP\fR \fP\fR[\fP\fB\-\-out\-dir\fP\fR=\fP\fIDIR\fP\fR] [\fP\fB\-o\fP\fR=\fP\fIFILENAME\fP\fR] [\fP\fB\-\-crate\-name\fP\fR=\fP\fINAME\fP\fR] [\fP\fB\-\-module\-name\fP\fR=\fP\fINAME\fP\fR] [\fP\fB\-C\fP\fR=\fP\fIGEN\fP\fR] \fP\fIPATH\fP
+\fBtau\fP\fR \fP\fR[\fP\fB\-\-out\-dir\fP\fR=\fP\fIDIR\fP\fR] [\fP\fB\-o\fP\fR=\fP\fIFILENAME\fP\fR] [\fP\fB\-\-crate\-name\fP\fR=\fP\fINAME\fP\fR] [\fP\fB\-\-module\-name\fP\fR=\fP\fINAME\fP\fR] [\fP\fB\-C\fP\fR=\fP\fIGEN\fP\fR] [\fP\fB\-\-emit\fP\fR=\fP\fIARG\fP\fR] \fP\fIPATH\fP
 .PP
 .SS AVAILABLE\ OPTIONS:
 .TP
@@ -24,6 +24,10 @@
 .TP
 \fB\-C\fP\fR, \fP\fB\-\-codegen\fP\fR=\fP\fIGEN\fP
 \fRSet the code generator\fP
+.PP
+.TP
+\fB    \-\-emit\fP\fR=\fP\fIARG\fP
+\fRComma separeted list of types of output for the compiler to emit.\fP
 .PP
 .TP
 \fB\-h\fP\fR, \fP\fB\-\-help\fP

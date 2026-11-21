@@ -20,6 +20,7 @@
 #![allow(clippy::needless_return)]
 use crate::{
     code_gen::CodeGen,
+    emit_type::EmitType,
     options::{Options, options},
 };
 use std::{
@@ -37,9 +38,12 @@ use tau_core::{
 };
 #[cfg(feature = "c")]
 use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
+use tau_generator_llvm::LlvmCodeGen;
+#[cfg(feature = "qbe")]
 use tau_generator_qbe::QbeEmitter;
 
 pub mod code_gen;
+pub mod emit_type;
 pub mod options;
 
 /// Parses the command line options and compiles the file.
@@ -55,6 +59,7 @@ pub fn main() {
     let elapsed = now.elapsed().as_millis() as f64 / 1000.0;
     if let Some(severity) = context.severity() {
         println!("{:?} after {}s", severity, elapsed);
+        exit(1);
     } else {
         println!("Finished in {}s", elapsed);
     }
@@ -94,12 +99,36 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
                 let code_output = output(folder, args.output(), "c");
                 CCodeGenerator::new().transpile(&ast, &code_output)
             }
-            CodeGen::Cranelift => unimplemented!(),
+            #[cfg(feature = "qbe")]
             CodeGen::Qbe => {
                 let output = output(&args.out_dir()?, args.output(), "ssa");
                 let mut emitter = QbeEmitter::new();
                 Translator::new(&mut emitter).fold_ast(ast);
                 Ok(fs::write(output, format!("{}", emitter.unfold()))?)
+            }
+            CodeGen::Llvm => {
+                use inkwell::context::Context;
+
+                let context = Context::create();
+                let module = context.create_module(args.module_name().as_str());
+                let mut emitter = LlvmCodeGen::new(&context, &module);
+                emitter.fold_ast(ast)?;
+                emitter.run_passes();
+
+                let folder = &args.out_dir()?;
+                for emit_type in args.emit() {
+                    match emit_type {
+                        EmitType::Obj => {
+                            let object = output(folder, args.output(), "o");
+                            emitter.write_object_file(&object)?;
+                        }
+                        EmitType::LlvmIr => {
+                            let output = output(folder, args.output(), "ll");
+                            module.print_to_file(output)?
+                        }
+                    }
+                }
+                Ok(())
             }
         },
         Err(error) => context.handle(&error),

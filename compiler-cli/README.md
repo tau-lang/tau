@@ -9,7 +9,7 @@ This is the default CLI for the Tau programming language.
 
 ## Usage
 
-**Usage**: **`Usage`** \[**`--out-dir`**=_`DIR`_\] \[**`-o`**=_`FILENAME`_\] \[**`--crate-name`**=_`NAME`_\] \[**`--module-name`**=_`NAME`_\] \[**`-C`**=_`GEN`_\] _`PATH`_
+**Usage**: **`Usage`** \[**`--out-dir`**=_`DIR`_\] \[**`-o`**=_`FILENAME`_\] \[**`--crate-name`**=_`NAME`_\] \[**`--module-name`**=_`NAME`_\] \[**`-C`**=_`GEN`_\] \[**`--emit`**=_`ARG`_\] _`PATH`_
 
 **Available options:**
 - **`    --out-dir`**=_`DIR`_ &mdash; 
@@ -22,6 +22,8 @@ This is the default CLI for the Tau programming language.
   Specify the NAME of the module being built
 - **`-C`**, **`--codegen`**=_`GEN`_ &mdash; 
   Set the code generator
+- **`    --emit`**=_`ARG`_ &mdash; 
+  Comma separeted list of types of output for the compiler to emit.
 - **`-h`**, **`--help`** &mdash; 
   Prints help information
 

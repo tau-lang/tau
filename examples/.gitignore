@@ -1,0 +1,10 @@
+# Ignore all files...
+*
+
+# ...except:
+# - tau source files
+# - the utils.c script
+# - this gitignore
+!*.tau
+!utils.c
+!.gitignore

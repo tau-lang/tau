@@ -638,7 +638,7 @@ impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
 
     fn fold_literal(&mut self, value: Origin<Literal>, type_: Self::Type) -> Self::Output {
         let kind = match value.kind() {
-            Literal::Int(value) => ValueKind::Const(*value as u64),
+            Literal::Int(value) => ValueKind::Const(*value),
             Literal::Float(value) => ValueKind::Const((*value).to_bits()),
             Literal::Bool(value) => ValueKind::Const(*value as u64),
             Literal::String(value) => {

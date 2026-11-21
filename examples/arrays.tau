@@ -1,15 +1,53 @@
-extern fn println(data: str);
+//! This example shows the usage of arrays in tau.
+//! To compile and run this script:
+//!
+//! ```sh
+//! tau arrays.tau
+//! gcc -o arrays arrays.o utils.c
+//! ./arrays
+//! ```
 
-extern fn itos(input: i64) -> str;
+extern fn puts(data: str) -> i32;
 
-fn plus1(i: i64) -> i64 = i + 1
+extern fn print_i64(format: str, value: i64) -> i32;
 
-io fn main() {
-    let a = [i64; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    let i = 0;
-    while (i < 16) {
-        a[i] = i;
-        i = plus1(i);
+/// Prints the content of an array.
+fn print_array(a: [i64; 16]) {
+    print_i64("[%d", a[0]);
+    for (i: usize = 1; i < 16; i += 1) {
+        print_i64(", %d", a[i]);
     }
-    println(itos(a[15]));
+    puts("]");
+}
+
+/// Swap to integers.
+fn swap(l: *i64, r: *i64) {
+    let tmp = *l;
+    *l = *r;
+    *r = tmp;
+}
+
+/// Basic sorting algorithm from wikipedia:
+/// https://en.wikipedia.org/wiki/Insertion_sort
+fn insertion_sort(a: *[i64; 16]) {
+    let len = 16;
+    let i: usize = 1;
+    while (len > i) {
+        let j = i;
+        while (j > 0 && *a[j-1] > *a[j]) {
+            swap(&(*a[j]), &(*a[j-1]));
+            j -= 1;
+        }
+        i += 1
+    }
+}
+
+fn main() {
+    let a: [i64; 16] = [i64;
+        3, 5, 2, 8, 15, 10, 4, 6,
+        12, 0, 14, 1, 9, 13, 7, 11
+    ];
+    print_array(a);
+    insertion_sort(&a);
+    print_array(a);
 }

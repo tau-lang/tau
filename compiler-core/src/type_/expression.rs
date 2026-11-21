@@ -416,7 +416,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
         self.visit_expr(left)?;
         self.visit_expr(right)?;
 
-        Ok(match operator.kind() {
+        match operator.kind() {
             // (a -> a) -> a
             BinaryOp::Set => {}
 
@@ -461,7 +461,8 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
 
             // (bool -> bool) -> bool
             BinaryOp::And | BinaryOp::Or => {}
-        })
+        }
+        Ok(())
     }
 
     fn visit_access_struct(
@@ -545,14 +546,11 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
             Literal::Int(_) => {
                 if type_.is_unbound() {
                     Err(Error::from(vec![
-                        diagnostic(
-                            format!("size of AnyInt could not be infered"),
-                            value.source(),
-                        )
-                        .with_label(label(
-                            "exect size (e.g. i64) must be known here",
-                            value.source(),
-                        )),
+                        diagnostic("size of AnyInt could not be infered", value.source())
+                            .with_label(label(
+                                "exact size (e.g. i64) must be known here",
+                                value.source(),
+                            )),
                         Diagnostic::help()
                             .with_message("bind the expression with let to a congrete type")
                             .with_label(primary(value.source())),
@@ -569,14 +567,11 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
             Literal::Float(_) => {
                 if type_.is_unbound() {
                     Err(Error::from(vec![
-                        diagnostic(
-                            format!("size of AnyFloat could not be infered"),
-                            value.source(),
-                        )
-                        .with_label(label(
-                            "exect size (e.g. f64) must be known here",
-                            value.source(),
-                        )),
+                        diagnostic("size of AnyFloat could not be infered", value.source())
+                            .with_label(label(
+                                "exact size (e.g. f64) must be known here",
+                                value.source(),
+                            )),
                         Diagnostic::help()
                             .with_message("bind the expression with let to a congrete type")
                             .with_label(primary(value.source())),

@@ -109,15 +109,11 @@ impl fmt::Display for TypeVar {
 }
 
 pub fn collapse_links(t: Arc<Type>) -> Arc<Type> {
-    if let Type::Var { type_: lock } = t.deref() {
-        match lock.try_read() {
-            Ok(type_var) => {
-                if let TypeVar::Link { type_ } = type_var.deref() {
-                    return collapse_links(type_.clone());
-                }
-            }
-            _ => {}
-        }
+    if let Type::Var { type_: lock } = t.deref()
+        && let Ok(type_var) = lock.try_read()
+        && let TypeVar::Link { type_ } = type_var.deref()
+    {
+        return collapse_links(type_.clone());
     }
     t
 }
